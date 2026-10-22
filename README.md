@@ -78,3 +78,15 @@ APP_UID=1000 APP_GID=1000 docker compose up -d --build
 仓库：https://github.com/AoKr2495/iDrac-List 。main 提交触发 GitHub Actions：后端测试 → 构建 linux/amd64 单容器镜像 → 容器启动/重启持久化验证 → 导出镜像 → 生成完整文件夹 ZIP（不含业务数据/日志）。在成功运行的 Artifacts 下载 iDrac-List-offline-amd64。
 
 NAS 使用 **compose.offline.yaml** 和包内 .env，不执行 build/pull，也不需要连接 GitHub。普通 compose.yaml 仍供联网侧源码构建使用。完整步骤见 [NAS 部署手册](deployment/NAS_DEPLOYMENT.md)，打印核对见 [一页清单](deployment/CHECKLIST.md)。GitHub 源码 Download ZIP 不含镜像，不能视为完全离线包。
+
+## PKF 备注
+
+备注位于卡片 PKF 单号右侧，同一行不增加高度。Active 失焦或 Enter 自动保存，Escape 撤销本次未提交输入；History 只读，返工后保留。未创建正式 Server 的临时空组先添加 Server 才可保存备注。备注支持多用户 SSE 同步并写操作审计。
+
+本地开发新版启动时会在事务内把 schema 1 数据库原地增加默认空 note 字段至 schema 2，保留既有业务与审计。更新 NAS 前仍按部署手册停服、备份配置/Data/Logs，再使用包含本功能的新镜像；之前已生成的离线包不会自动获得此功能。
+
+API 新增 POST /api/pkfs/{pkf}/note，内容为 operation_id、text；只对有 Active Server 的正式 PKF 生效。
+
+## 1.0.1：HTTP 白屏修复 + PKF 同行备注
+
+UUID 已改为统一 getRandomValues 实现，支持局域网 IP + HTTP 非安全上下文，不要求 HTTPS。完整回归与保留 NAS 现有数据的换镜像步骤见 [1.0.1 更新说明](deployment/UPDATE_1.0.1.md)。本版包含备注字段的兼容性添加，首次启动自动追加空字段；不要将新包空 Data/Logs 覆盖正式目录。

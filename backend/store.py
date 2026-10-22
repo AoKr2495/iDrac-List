@@ -35,7 +35,7 @@ def normalize_pkf(value, year=26):
     return f'PKF{int(m[1]) if m[1] else year:02d}GR{int(m[2]):05d}'
 
 SCHEMA = '''
-CREATE TABLE IF NOT EXISTS pkfs(pkf TEXT PRIMARY KEY, position TEXT NOT NULL DEFAULT 'Normal' CHECK(position IN ('Pinned','Normal','Bottom')));
+CREATE TABLE IF NOT EXISTS pkfs(pkf TEXT PRIMARY KEY, position TEXT NOT NULL DEFAULT 'Normal' CHECK(position IN ('Pinned','Normal','Bottom')), note TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS servers(
  id TEXT PRIMARY KEY, pkf TEXT NOT NULL REFERENCES pkfs(pkf), sn TEXT NOT NULL COLLATE BINARY CHECK(length(sn)>0),
  model TEXT, os TEXT, status TEXT NOT NULL DEFAULT '', stage INTEGER NOT NULL DEFAULT -1 CHECK(stage BETWEEN -1 AND 4),
@@ -55,7 +55,6 @@ CREATE TRIGGER IF NOT EXISTS audit_no_update BEFORE UPDATE ON audit BEGIN SELECT
 CREATE TRIGGER IF NOT EXISTS audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT, 'immutable audit'); END;
 CREATE TRIGGER IF NOT EXISTS snapshot_no_update BEFORE UPDATE ON deleted_snapshots BEGIN SELECT RAISE(ABORT, 'immutable snapshot'); END;
 CREATE TRIGGER IF NOT EXISTS snapshot_no_delete BEFORE DELETE ON deleted_snapshots BEGIN SELECT RAISE(ABORT, 'immutable snapshot'); END;
-PRAGMA user_version=1;
 '''
 
 class Store:
@@ -66,7 +65,15 @@ class Store:
         self.log_lock = threading.Lock()
         with self.connect() as db:
             db.execute('PRAGMA journal_mode=WAL')
-            db.executescript(SCHEMA)
+            # Version 1 databases already contain real NAS/local data. Add only a
+            # default-empty PKF field, in a single migration transaction.
+            db.executescript('BEGIN IMMEDIATE;\n' + SCHEMA)
+            version = db.execute('PRAGMA user_version').fetchone()[0]
+            if version > 2:
+                raise RuntimeError('Database schema is newer than this application')
+            if 'note' not in {row['name'] for row in db.execute('PRAGMA table_info(pkfs)')}:
+                db.execute("ALTER TABLE pkfs ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+            db.execute('PRAGMA user_version=2')
 
     def open(self):
         db = sqlite3.connect(self.path, timeout=15)
@@ -128,16 +135,25 @@ class Store:
                 sid = str(uuid.uuid4())
                 db.execute('INSERT INTO servers(id,pkf,sn,created_at,updated_at) VALUES(?,?,?,?,?)', (sid,pkf,sn,stamp,stamp))
                 after, event = self.record(db, sid), True
-            elif action == 'position':
-                position = body.get('position')
-                if position not in ('Pinned','Normal','Bottom'):
-                    raise Problem('invalid_position', '无效排序组')
+            elif action in ('position', 'pkf_note'):
+                if action == 'position':
+                    value = body.get('position')
+                    if value not in ('Pinned','Normal','Bottom'):
+                        raise Problem('invalid_position', '无效排序组')
+                    field = 'position'
+                else:
+                    value = body.get('text')
+                    if not isinstance(value, str) or '\n' in value or '\r' in value:
+                        raise Problem('invalid_note', 'PKF 备注必须为单行文本')
+                    value = value.strip()
+                    field = 'note'
                 before = db.execute('SELECT * FROM pkfs WHERE pkf=?', (sid,)).fetchone()
                 if not before or not db.execute("SELECT 1 FROM servers WHERE pkf=? AND lifecycle='Active'", (sid,)).fetchone():
                     raise Problem('not_found', 'Active PKF 不存在', 404)
                 before = dict(before)
-                db.execute('UPDATE pkfs SET position=? WHERE pkf=?', (position,sid))
-                after, event = dict(pkf=sid,position=position), before['position'] != position
+                db.execute(f'UPDATE pkfs SET {field}=? WHERE pkf=?', (value,sid))
+                after = dict(db.execute('SELECT * FROM pkfs WHERE pkf=?', (sid,)).fetchone())
+                event = before[field] != value
             else:
                 before = self.record(db, sid)
                 if before['lifecycle'] == 'Deleted':
@@ -194,11 +210,12 @@ class Store:
             if event:
                 event_id = str(uuid.uuid4())
                 cur = db.execute('INSERT INTO audit(event_id,server_id,object,action,time,before_json,after_json,client_id,request_id,operation_id) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                    (event_id,sid if action!='position' else None,sid,action,stamp,packed(before),packed(after),client_id,request_id,operation))
+                    (event_id,sid if action not in ('position','pkf_note') else None,sid,action,stamp,packed(before),packed(after),client_id,request_id,operation))
                 db.execute('INSERT INTO outbox(seq) VALUES(?)', (cur.lastrowid,))
                 if action=='delete':
                     snapshot = dict(before)
-                    snapshot['operations'] = [dict(x) for x in db.execute('SELECT * FROM audit WHERE server_id=? ORDER BY seq', (sid,))]
+                    snapshot['pkf_note'] = db.execute('SELECT note FROM pkfs WHERE pkf=?', (before['pkf'],)).fetchone()[0]
+                    snapshot['operations'] = [dict(x) for x in db.execute("SELECT * FROM audit WHERE server_id=? OR (object=? AND action='pkf_note') ORDER BY seq", (sid,before['pkf']))]
                     db.execute('INSERT INTO deleted_snapshots VALUES(?,?,?,?)', (sid,packed(snapshot),stamp,event_id))
             revision = db.execute('SELECT COALESCE(MAX(seq),0) FROM audit').fetchone()[0]
             result = dict(record=after, changed=event, revision=revision)

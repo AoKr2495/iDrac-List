@@ -20,6 +20,15 @@ for attempt in range(60):
 else:raise RuntimeError('Container failed to become healthy')
 
 if sys.argv[1]=='seed':
+    baseline=Path('.cache/container-upgrade-before.json')
+    if baseline.exists():
+        expected=json.loads(baseline.read_text())
+        snapshot=call('/api/state')
+        actual={'servers':snapshot['servers'],'pkfs':[{k:v for k,v in group.items() if k!='note'} for group in snapshot['pkfs']],'revision':snapshot['revision']}
+        assert actual==expected, 'Existing v1 business data changed during container upgrade'
+        assert all(group['note']=='' for group in snapshot['pkfs'])
+        print('Existing v1 business/History/Status/order/revision preserved by v2 image upgrade.')
+
     with urllib.request.urlopen(BASE+'/') as response:
         assert b'<div id="root"></div>' in response.read()
     row=call('/api/servers',dict(pkf='PKF26GR00467',sn='CI-PERSISTENCE'))['record']

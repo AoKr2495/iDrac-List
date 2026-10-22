@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, type Snapshot } from "./types";
-const client = localStorage.getItem("idrac-client") || crypto.randomUUID();
+import { uuidV4 } from "./uuid";
+const client = localStorage.getItem("idrac-client") || uuidV4();
 localStorage.setItem("idrac-client", client);
 const pending = new Map<string, string>();
 export function useWorkspace() {
@@ -101,7 +102,7 @@ export function useWorkspace() {
       if (!allowed.current)
         throw new ApiError("offline", "当前离线，请连接恢复后再保存");
       const key = path + JSON.stringify(body);
-      const operation = pending.get(key) || crypto.randomUUID();
+      const operation = pending.get(key) || uuidV4();
       pending.set(key, operation);
       let response: Response;
       try {
@@ -110,7 +111,7 @@ export function useWorkspace() {
           headers: {
             "Content-Type": "application/json",
             "X-Client-ID": client,
-            "X-Request-ID": crypto.randomUUID(),
+            "X-Request-ID": uuidV4(),
           },
           body: JSON.stringify({ ...body, operation_id: operation }),
           signal: AbortSignal.timeout(15000),
@@ -122,12 +123,10 @@ export function useWorkspace() {
           "未确认保存结果。连接恢复后可重试，系统会防止重复保存。",
         );
       }
-      const result = await response
-        .json()
-        .catch(() => ({
-          code: "server_error",
-          message: "服务暂时无法处理请求，请连接恢复后重试",
-        }));
+      const result = await response.json().catch(() => ({
+        code: "server_error",
+        message: "服务暂时无法处理请求，请连接恢复后重试",
+      }));
       if (!response.ok) {
         if (response.status < 500) pending.delete(key);
         else disconnectRef.current();

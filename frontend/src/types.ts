@@ -17,7 +17,7 @@ export type Server = {
 };
 export type Snapshot = {
   servers: Server[];
-  pkfs: { pkf: string; position: string }[];
+  pkfs: { pkf: string; position: string; note: string }[];
   revision: number;
   timezone: string;
   models: string[];

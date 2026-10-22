@@ -200,3 +200,14 @@ V1 无账号，user_id/created_by/updated_by 可空，不假冒用户身份；�
 ## 15. 验收后的发布授权 — Confirmed
 
 用户已验收 V1，授权提交 AoKr2495/iDrac-List 仓库，并提供 NAS 全离线镜像文件夹包和部署手册。用户确认 NAS 为全新空工作区，Mac 当前业务数据和审计/日志不迁移、不上传。使用已构建 linux/amd64 镜像 tar + 离线 Compose，NAS 不构建/不拉取。GitHub Actions 构建及容器验证作为发布准备；实际 NAS 部署由用户执行，未授权远程连接修改 NAS。
+
+## 16. PKF 同行备注 — Confirmed
+
+用户新增每个 PKF 的备注，并明确要求“卡片 PKF 单号右侧，和展示的 PKF 同行，不加更多的行导致 UI 冗余”。因此采用同一 Header 内单行输入，不增加卡片高度；长内容横向编辑/省略并可通过提示查看。失焦或 Enter 保存，Escape 放弃本次草稿；空白可清空。
+备注属于 PKF 元数据，Active 可编辑，History 同行只读，返工/最后一行完成后保留；同一 PKF 的 Active/History 展示同一份最新备注，不复制到各 Server。已保存备注和排序偏好同样持久保留；没有正式 Server 的临时空组仍不持久化，其备注框禁用并提示先添加 Server。
+多用户共享、同字段最后成功提交生效，SSE 同步；本地未提交备注不被远端更新覆盖，离线只读且保留草稿，失败保留输入并可重试。若其他客户端移走最后 Active Server，未保存备注以可复制草稿提示保留，不自动新建空组。
+备注变更与操作审计/日志 outbox 在同一事务提交，同文无变更不额外记录；请求幂等。Server 删除快照额外保留删除当时的 PKF 备注及相关 PKF 备注操作。旧 SQLite 数据库由 schema 1 原地增加空 note 字段升级至 2，不清空既有业务、Status History、排序或审计。
+
+## 17. HTTP UUID 兼容修复与 1.0.1 发布 — Confirmed
+
+局域网 IP + HTTP 必须正常渲染，不要求 HTTPS。统一 UUID v4 使用 getRandomValues 替代 randomUUID 直接依赖；业务规则不变。用户追加明确要求将最新 PKF 改动与此修复一起打包并 push GitHub。交付 Linux amd64 离线包供用户确认，不直接部署 NAS，不操作 NAS Data/Logs；新版备注字段首次启动的兼容升级需要明确告知，并遵循现有停服备份/原挂载保留流程。

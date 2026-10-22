@@ -10,7 +10,7 @@ export default defineConfig({
     ["json", { outputFile: "../.cache/browser-results/results.json" }],
   ],
   use: {
-    baseURL: "http://127.0.0.1:8089",
+    baseURL: process.env.IDRAC_TEST_URL || "http://127.0.0.1:8089",
     viewport: { width: 1920, height: 1080 },
     trace: "retain-on-failure",
   },

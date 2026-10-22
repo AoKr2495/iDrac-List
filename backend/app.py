@@ -91,6 +91,10 @@ def create_app(settings: Settings | None = None):
     def position(pkf: str, body: Mutation, request: Request):
         return apply('position',pkf,body,request)
 
+    @app.post('/api/pkfs/{pkf}/note')
+    def pkf_note(pkf: str, body: Mutation, request: Request):
+        return apply('pkf_note',pkf,body,request)
+
     @app.post('/api/servers/{sid}/{action}')
     def change(sid: str, action: str, body: Mutation, request: Request):
         if action not in ('edit','status','progress','return','delete'):

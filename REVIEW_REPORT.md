@@ -100,3 +100,21 @@ Logo 仍执行用户更具体的“只用图标、不要 SVG 文字”指令，�
 验证：35 项后端测试、8 项 Chromium 端到端测试全部通过；TypeScript 与生产构建通过。新增配置 UI 测试使用替换的 state 配置验证前端；后端另用真实临时配置文件验证读取、27 年补全、26 年兼容、提醒与空字段 Validation，以及非法配置和重启生效。
 
 8088 服务已重启，业务 Server/PKF 偏好/业务版本的重启前后摘要一致；正式提醒配置仍为空，未填任何业务检查内容。测试服务/数据与正式工作区分离。没有推送 GitHub 或部署 NAS；Docker 仍不可用，挂载配置未在 Docker 中实际运行。
+
+
+## PKF 同行备注本地开发验收
+
+新增共享 PKF note 字段和 POST /api/pkfs/{pkf}/note；单行输入位于 PKF 单号右侧，与 Header 同行，不增加卡片高度。Active 失焦/Enter 保存，Escape 放弃；History 只读，返工保留。临时空 PKF 仍不持久化，在添加正式 Server 前不保存备注。
+
+备注修改纳入既有事务、操作 ID 幂等、永久审计及日志 outbox，SSE 同步、离线只读和本地草稿保护。最后 Active 行被他人移走时保留可复制草稿，不自动重建 PKF。删除快照额外包含当时 PKF 备注和相关备注操作。
+
+旧数据库迁移：事务内给 pkfs 增加默认空 note，不重建/清空数据；schema 1 -> 2，可重复启动不覆盖备注。本次本地升级前使用 SQLite backup API 在忽略目录 .cache/before-pkf-note-migration.sqlite3 做一次性开发安全备份（不是产品自动备份功能）。升级后通过业务数据摘要比对确认 Server、Status History、PKF 排序和 revision 不变。
+
+测试：44 项后端测试、9 项 Chromium 浏览器端到端测试、TypeScript 检查与生产构建均通过；浏览器检查输入框与 PKF 单号同一行、Header 高度不变，验证同步、离线草稿、清空、History 只读和返工保留。截图在 .cache/pkf-note-inline.png。旧库迁移、历史保留、删除快照与审计测试通过。
+
+本地服务已重启于 8088，刷新页面可验收。当前源文件为本地修改；尚未为此新功能推送仓库或替换已交付镜像包，原 8e6927a 离线包不包含备注功能。NAS 升级需在本地验收后用包含本改动的新镜像包，且按部署手册先停服备份原 Data/Logs。
+
+
+## 1.0.1 HTTP + PKF 备注合并发布
+
+用户要求两项一起 push GitHub 并交付完整离线 ZIP/部署手册。本地 44 后端、11 浏览器测试、类型检查和构建通过；HTTP 非安全 IP 回归通过，统一 getRandomValues UUID。完整修改与数据兼容说明见 deployment/TEST_REPORT_1.0.1.md、deployment/UPDATE_1.0.1.md。此前“备注仅本地未发布”的文字为历史阶段状态，由本次合并发布更新取代。

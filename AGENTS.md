@@ -38,3 +38,11 @@ SVG 为源文件。四份附件仅为参考，正式 SVG 只使用 iD 图形、�
 ## 仓库与离线部署交付授权 — Confirmed
 
 用户已再次验收通过，明确授权提交到 https://github.com/AoKr2495/iDrac-List.git，并制作 NAS 部署文件/步骤。NAS 无法连接 GitHub，使用完整离线文件夹压缩包。用户已选择全新空工作区，仅复制程序和配置，不迁移 Mac 现有业务数据/审计/日志。允许源码提交及联网侧构建/验证发布包；不连接或实际修改 NAS，部署由用户按手册执行。不得上传 Data/Logs/.cache/.venv/node_modules、镜像 tar/发布 ZIP，发布产物通过 Actions artifact 交付。
+
+## PKF 备注扩展 — Confirmed
+
+用户要求备注框放 PKF 单号右侧、同行，不增加卡片行或高度；Active 单行失焦/Enter 保存，History 只读，返工保留。备注是共享 PKF 元数据，需事务审计、SSE 与草稿保护。旧数据库增加字段而不重建/清空数据；测试隔离于 .cache/。新功能当前按本地开发验收，不把此前发布的离线包宣称为已含新功能。
+
+## 1.0.1 合并发布授权
+
+用户明确要求 HTTP UUID 修复与最新 PKF 改动一同打包并 push GitHub。允许提交 main 并通过 CI 构建验证 amd64 离线包；不得直接部署或操作 NAS Data/Logs。新版包含 PKF 字段的兼容性添加，必须在更新说明明示；不得混淆为目录搬迁或清空数据。

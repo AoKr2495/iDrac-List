@@ -107,6 +107,9 @@ function App() {
     [errors, setErrors] = useState<Record<string, string>>({}),
     [busy, setBusy] = useState<Set<string>>(new Set());
   const busyRef = useRef(new Set<string>());
+  const [noteDrafts, setNoteDrafts] = useState<
+    Record<string, { value: string; base: string }>
+  >({});
   const [toast, setToast] = useState(""),
     [globalError, setGlobalError] = useState("");
   const [editor, setEditor] = useState<{
@@ -138,6 +141,7 @@ function App() {
   }, [toast]);
   const dirty =
     Object.values(drafts).some((d) => d.value !== d.base) ||
+    Object.values(noteDrafts).some((d) => d.value !== d.base) ||
     (!!editor && editor.text !== editor.initial);
   useEffect(() => {
     const leave = (e: BeforeUnloadEvent) => {
@@ -332,6 +336,31 @@ function App() {
       return next.length === prev.length ? prev : next;
     });
   }, [data]);
+  const savedNote = (pkf: string) =>
+    data?.pkfs.find((group) => group.pkf === pkf)?.note ?? "";
+  const saveNote = (pkf: string) => {
+    const draft = noteDrafts[pkf];
+    if (!draft) return;
+    if (draft.value.trim() === savedNote(pkf)) {
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[pkf];
+        return next;
+      });
+      return;
+    }
+    const value = draft.value;
+    void perform("note:" + pkf, async () => {
+      await mutate(`/pkfs/${pkf}/note`, { text: value });
+      // Do not discard text typed after this particular request began.
+      setNoteDrafts((prev) => {
+        if (prev[pkf]?.value !== value) return prev;
+        const next = { ...prev };
+        delete next[pkf];
+        return next;
+      });
+    });
+  };
   const position = (pkf: string) =>
     data?.pkfs.find((p) => p.pkf === pkf)?.position || "Normal";
   const allActive = [
@@ -736,6 +765,37 @@ function App() {
               ))}
             </div>
           )}
+          {Object.entries(noteDrafts)
+            .filter(
+              ([pkf, draft]) =>
+                draft.value !== draft.base &&
+                !data?.servers.some(
+                  (row) => row.pkf === pkf && row.lifecycle === "Active",
+                ),
+            )
+            .map(([pkf, draft]) => (
+              <div className="orphan-drafts" key={pkf}>
+                <strong>{pkf} 的备注尚未保存：该 PKF 已无 Active Server</strong>
+                <div>
+                  <input
+                    aria-label={`Unsaved PKF note ${pkf}`}
+                    readOnly
+                    value={draft.value}
+                  />
+                  <button
+                    onClick={() =>
+                      setNoteDrafts((prev) => {
+                        const next = { ...prev };
+                        delete next[pkf];
+                        return next;
+                      })
+                    }
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            ))}
           {!pkfs.length && (
             <div className="empty">
               <div className="empty-icon">
@@ -803,6 +863,80 @@ function App() {
                       <span className="group-count">
                         {group.length}{" "}
                         {group.length === 1 ? "server" : "servers"}
+                      </span>
+                    </div>
+                    <div className="pkf-note-field">
+                      <input
+                        className="pkf-note-input"
+                        aria-label={`PKF note ${pkf}`}
+                        title={
+                          page === "History"
+                            ? savedNote(pkf)
+                            : (noteDrafts[pkf]?.value ?? savedNote(pkf))
+                        }
+                        placeholder={
+                          group.length
+                            ? "填写 PKF 备注…"
+                            : "添加 Server 后可填写备注"
+                        }
+                        value={
+                          page === "History"
+                            ? savedNote(pkf)
+                            : (noteDrafts[pkf]?.value ?? savedNote(pkf))
+                        }
+                        readOnly={page === "History"}
+                        disabled={
+                          page === "Active" &&
+                          (!online || !group.length || busy.has("note:" + pkf))
+                        }
+                        onChange={(e) => {
+                          const value = e.target.value.replace(/[\r\n]+/g, " ");
+                          setNoteDrafts((prev) => {
+                            const base = prev[pkf]?.base ?? savedNote(pkf);
+                            if (value === base) {
+                              const next = { ...prev };
+                              delete next[pkf];
+                              return next;
+                            }
+                            return { ...prev, [pkf]: { value, base } };
+                          });
+                        }}
+                        onBlur={() => {
+                          if (page === "Active") saveNote(pkf);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && page === "Active") {
+                            e.preventDefault();
+                            saveNote(pkf);
+                          }
+                          if (e.key === "Escape")
+                            setNoteDrafts((prev) => {
+                              const next = { ...prev };
+                              delete next[pkf];
+                              return next;
+                            });
+                        }}
+                      />
+                      <span
+                        className="pkf-note-indicator"
+                        role={errors["note:" + pkf] ? "alert" : "status"}
+                        title={
+                          errors["note:" + pkf] ||
+                          (noteDrafts[pkf]?.base !== undefined &&
+                          noteDrafts[pkf].base !== savedNote(pkf)
+                            ? "远端备注已更新，当前输入尚未保存"
+                            : "")
+                        }
+                      >
+                        {errors["note:" + pkf]
+                          ? "保存失败"
+                          : busy.has("note:" + pkf)
+                            ? "保存中"
+                            : page === "Active" &&
+                                noteDrafts[pkf]?.value !== undefined &&
+                                noteDrafts[pkf].value.trim() !== savedNote(pkf)
+                              ? "未保存"
+                              : ""}
                       </span>
                     </div>
                     {page === "Active" && (

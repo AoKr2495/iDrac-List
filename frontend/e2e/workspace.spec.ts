@@ -5,18 +5,19 @@ import {
   type Page,
 } from "@playwright/test";
 import { fileURLToPath } from "node:url";
+import { uuidV4 } from "../src/uuid";
 const artifact = (name: string) =>
   fileURLToPath(new URL("../../.cache/" + name, import.meta.url));
 let counter = 81000 + Math.floor(Math.random() * 5000);
 const pkf = () => `PKF26GR${++counter}`;
 const requestBody = (data: Record<string, unknown>) => ({
-  operation_id: crypto.randomUUID(),
+  operation_id: uuidV4(),
   ...data,
 });
 async function create(
   api: APIRequestContext,
   group = pkf(),
-  sn = "SN-" + crypto.randomUUID().slice(0, 8),
+  sn = "SN-" + uuidV4().slice(0, 8),
 ) {
   const r = await api.post("/api/servers", {
     data: requestBody({ pkf: group, sn }),
@@ -380,4 +381,69 @@ test("configured prefix completes shorthand and configured reminder matches exac
   await page.getByLabel("PKF number").fill("468");
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await expect(page.locator("#PKF27GR00468")).toBeVisible();
+});
+
+test("PKF notes stay inline, synchronize, preserve offline draft and survive return", async ({
+  browser,
+  request,
+}) => {
+  const row = await create(request);
+  const a = await browser.newContext({
+      viewport: { width: 1920, height: 1080 },
+    }),
+    b = await browser.newContext();
+  const one = await a.newPage(),
+    two = await b.newPage();
+  await ready(one);
+  await ready(two);
+  const section = one.locator("#" + row.pkf),
+    header = section.locator(".group-header");
+  const input = one.getByLabel("PKF note " + row.pkf, { exact: true }),
+    other = two.getByLabel("PKF note " + row.pkf, { exact: true });
+  const before = await header.boundingBox();
+  await input.fill("客户要求：周五交付");
+  await section.getByRole("heading", { name: row.pkf, exact: true }).click();
+  await expect(other).toHaveValue("客户要求：周五交付");
+  await expect(input).toHaveValue("客户要求：周五交付");
+  const after = await header.boundingBox(),
+    name = await section
+      .getByRole("heading", { name: row.pkf, exact: true })
+      .boundingBox(),
+    field = await input.boundingBox();
+  expect(after!.height).toBe(before!.height);
+  expect(field!.x).toBeGreaterThan(name!.x + name!.width);
+  expect(
+    Math.abs(field!.y + field!.height / 2 - (name!.y + name!.height / 2)),
+  ).toBeLessThan(3);
+  await section.screenshot({ path: artifact("pkf-note-inline.png") });
+  await input.fill("LOCAL NOTE DRAFT");
+  const remote = await request.post(`/api/pkfs/${row.pkf}/note`, {
+    data: requestBody({ text: "REMOTE NOTE" }),
+  });
+  expect(remote.ok()).toBeTruthy();
+  await expect(other).toHaveValue("REMOTE NOTE");
+  await expect(input).toHaveValue("LOCAL NOTE DRAFT");
+  await a.setOffline(true);
+  await expect(input).toBeDisabled();
+  await a.setOffline(false);
+  await expect(one.getByText("Live · NAS")).toBeVisible({ timeout: 15000 });
+  await expect(input).toHaveValue("LOCAL NOTE DRAFT");
+  await input.press("Enter");
+  await expect(other).toHaveValue("LOCAL NOTE DRAFT");
+  const h = await change(request, row, "progress", {
+    stage: 4,
+    state: "Success",
+    confirmed: true,
+  });
+  await one.getByRole("button", { name: "History", exact: true }).click();
+  await expect(input).toHaveValue("LOCAL NOTE DRAFT");
+  await expect(input).toHaveAttribute("readonly", "");
+  await change(request, h, "return", { confirmed: true });
+  await one.getByRole("button", { name: "Active", exact: true }).click();
+  await expect(input).toHaveValue("LOCAL NOTE DRAFT");
+  await input.fill("");
+  await section.getByRole("heading", { name: row.pkf, exact: true }).click();
+  await expect(other).toHaveValue("");
+  await a.close();
+  await b.close();
 });

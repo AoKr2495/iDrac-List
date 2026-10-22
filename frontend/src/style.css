@@ -993,3 +993,59 @@ tr.removing {
   overflow-wrap: anywhere;
   margin: 6px 0;
 }
+
+/* Notes share the existing PKF header line; never add a card row. */
+.group-header {
+  gap: 16px;
+}
+.group-name,
+.group-actions {
+  flex-shrink: 0;
+}
+.pkf-note-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 120px;
+  max-width: 720px;
+  margin-right: auto;
+}
+.pkf-note-input {
+  min-width: 0;
+  border-color: transparent;
+  background: transparent;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+.pkf-note-input:hover:not(:disabled),
+.pkf-note-input:focus {
+  border-color: var(--border);
+  background: var(--input);
+}
+.pkf-note-input[readonly] {
+  cursor: text;
+}
+.pkf-note-indicator {
+  font-size: 10px;
+  white-space: nowrap;
+  color: var(--warning);
+}
+.pkf-note-indicator:empty {
+  display: none;
+}
+@media (max-width: 700px) {
+  .group-header {
+    gap: 8px;
+    padding: 0 8px;
+  }
+  .group-name {
+    gap: 6px;
+  }
+  .group-count {
+    display: none;
+  }
+  .pkf-note-field {
+    min-width: 50px;
+  }
+}
