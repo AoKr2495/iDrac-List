@@ -1,0 +1,16 @@
+services:
+  idrac-list:
+    build:
+      context: .
+      args:
+        APP_UID: ${APP_UID:-1000}
+        APP_GID: ${APP_GID:-1000}
+    ports:
+      - "8088:8088"
+    restart: unless-stopped
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./config:/app/config:ro
+      - ./Data:/app/Data
+      - ./Logs:/app/Logs
+    stop_grace_period: 30s

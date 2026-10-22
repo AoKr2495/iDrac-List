@@ -1,0 +1,18 @@
+services:
+  idrac-list:
+    image: ${IDRAC_IMAGE:-idrac-list:1.0.0}
+    platform: linux/amd64
+    pull_policy: never
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    ports:
+      - "${IDRAC_PORT:-8088}:8088"
+    restart: unless-stopped
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./config:/app/config:ro
+      - ./Data:/app/Data
+      - ./Logs:/app/Logs
+    stop_grace_period: 30s

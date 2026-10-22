@@ -1,0 +1,51 @@
+name: Build and verify offline NAS bundle
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Backend tests
+        run: |
+          mkdir -p .cache
+          python -m pip install -r requirements.lock -r requirements-dev.txt
+          TMPDIR="$PWD/.cache" python -m pytest -q --basetemp=.cache/pytest
+      - name: Build Linux x86-64 image
+        run: |
+          VERSION=$(cat VERSION)
+          IMAGE="idrac-list:${VERSION}-${GITHUB_SHA:0:12}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          docker build --platform linux/amd64 --label "org.opencontainers.image.revision=$GITHUB_SHA" -t "$IMAGE" .
+          docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}' | grep -Fx linux/amd64
+      - name: Test isolated container and persistence
+        run: |
+          mkdir -p .cache/smoke/Data .cache/smoke/Logs
+          sudo chown -R 1000:1000 .cache/smoke
+          docker run -d --name idrac-smoke --pull never -p 127.0.0.1:18088:8088 -v "$PWD/.cache/smoke/Data:/app/Data" -v "$PWD/.cache/smoke/Logs:/app/Logs" "$IMAGE"
+          python scripts/container_smoke.py seed
+          docker restart idrac-smoke
+          python scripts/container_smoke.py verify
+          docker logs idrac-smoke
+          docker rm -f idrac-smoke
+      - name: Export image and package full folder
+        run: |
+          docker save -o .cache/idrac-list-amd64.tar "$IMAGE"
+          python scripts/package_release.py --image-tar .cache/idrac-list-amd64.tar --image-tag "$IMAGE" --commit "$GITHUB_SHA" --output releases/iDrac-List-${GITHUB_SHA:0:12}-offline-amd64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iDrac-List-offline-amd64
+          path: releases/*
+          compression-level: 0
+          retention-days: 90
+      - name: Diagnostics
+        if: failure()
+        run: docker logs idrac-smoke 2>/dev/null || true
