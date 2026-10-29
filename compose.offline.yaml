@@ -1,6 +1,6 @@
 services:
   idrac-list:
-    image: ${IDRAC_IMAGE:-idrac-list:1.0.0}
+    image: ${IDRAC_IMAGE:-idrac-list:1.1.0}
     platform: linux/amd64
     pull_policy: never
     user: "${APP_UID:-1000}:${APP_GID:-1000}"

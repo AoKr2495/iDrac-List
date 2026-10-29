@@ -127,3 +127,33 @@ def test_migration_failure_rolls_back_original_schema(tmp_path):
         assert db.execute('PRAGMA user_version').fetchone()[0]==2
         assert 'packing_entered_at' not in [r[1] for r in db.execute('PRAGMA table_info(servers)')]
         assert db.execute('SELECT COUNT(*) FROM servers').fetchone()[0]==5
+
+
+def test_packing_blank_history_idempotence_and_stale_editor(store):
+    a=create(store)
+    p=op(store,'progress',a,stage=4,state='Success',confirmed=True)['record']
+    before=store.snapshot()
+    assert not op(store,'status',p,text='   ')['changed']
+    assert store.snapshot()==before
+    body=dict(operation_id=str(uuid.uuid4()),generation=p['generation'],text='same')
+    result=store.mutate('status',p['id'],body)
+    assert store.mutate('status',p['id'],body)==result
+    op(store,'status',p,text='same');p=op(store,'status',p,text='')['record']
+    assert [r['text'] for r in p['status_history']]==['','same','same']
+    history=op(store,'packing',p,confirmed=True)['record']
+    with pytest.raises(Problem):op(store,'status',p,text='stale Packing edit')
+    active=op(store,'return',history,confirmed=True)['record']
+    with pytest.raises(Problem):op(store,'status',p,text='stale after rework')
+    assert active['status_history']==p['status_history']
+
+
+def test_packing_return_races_completion_exactly_one_commit(store):
+    p=op(store,'progress',create(store),stage=4,state='Success',confirmed=True)['record']
+    def move(action):
+        try:return op(store,action,p,confirmed=True)['record']
+        except Problem:return None
+    with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(move,['return','packing']))
+    assert len([r for r in results if r])==1
+    final=store.snapshot()['servers'][0]
+    assert final['generation']==2
+    assert (final['pkf'] in store.snapshot()['active_order'])==(final['lifecycle']=='Active')

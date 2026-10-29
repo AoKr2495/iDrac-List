@@ -11,8 +11,8 @@
 
 2026-10-29，Mac隔离测试目录，不使用默认Data/Logs。
 
-- 后端：50 passed。包括原业务回归、真实Schema1/2迁移、主键/外键/Status/备注/审计保留、迁移失败回滚、并发排序冲突、集合变化、无变化/幂等、业务事务失败回滚、Packing状态流转与并发迁移、日志、真实进程重启持久化。
-- 浏览器：16 passed（Chromium自动化）。覆盖HTTP非安全IP且randomUUID不存在、10000个UUID、原UI/SSE/离线/草稿/主题/竖屏、鼠标/触屏/键盘排序、Cancel/Esc/X、Save、失败草稿、远端版本提示/Reload、排序不影响Packing/History、三阶段流转/返工、Packing Status和双客户端同步。
+- 后端：52 passed。包括原业务回归、真实Schema1/2迁移、主键/外键/Status/备注/审计保留、迁移失败回滚、并发排序冲突、集合变化、无变化/幂等、业务事务失败回滚、Packing状态流转与并发迁移、日志、真实进程重启持久化。
+- 浏览器：17 passed（Chromium自动化）。覆盖HTTP非安全IP且randomUUID不存在、10000个UUID、原UI/SSE/离线/草稿/主题/竖屏、鼠标/触屏/键盘排序、Cancel/Esc/X、Save、失败草稿、远端版本提示/Reload、排序不影响Packing/History、三阶段流转/返工、Packing Status和双客户端同步。
 - TypeScript类型检查通过，Vite生产构建通过，git diff空白检查通过。
 - 现有一条Starlette TestClient/httpx弃用警告，不影响用例；本次未改依赖栈以免扩大范围。
 

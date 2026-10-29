@@ -720,7 +720,9 @@ function App() {
               <p>
                 {page === "Active"
                   ? "每一个阶段，清晰可见。"
-                  : "已完成的工作，完整保留。"}
+                  : page === "Packing"
+                    ? "验证已完成，等待打包交付。"
+                    : "已完成的工作，完整保留。"}
               </p>
             </div>
             {page === "Active" && (
@@ -913,9 +915,11 @@ function App() {
                             : (noteDrafts[pkf]?.value ?? savedNote(pkf))
                         }
                         placeholder={
-                          group.length
-                            ? "填写 PKF 备注…"
-                            : "添加 Server 后可填写备注"
+                          page !== "Active"
+                            ? "—"
+                            : group.length
+                              ? "填写 PKF 备注…"
+                              : "添加 Server 后可填写备注"
                         }
                         value={
                           page !== "Active"

@@ -93,6 +93,7 @@ class Store:
                 if db.execute('PRAGMA foreign_key_check').fetchall():
                     raise RuntimeError('Migration foreign key check failed')
                 db.execute('PRAGMA user_version=3')
+                db.commit()
             except Exception:
                 db.rollback()
                 raise

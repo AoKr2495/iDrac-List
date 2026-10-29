@@ -315,17 +315,92 @@ test("touch handle drag, keyboard drag cancel and long-list scroll keep modal co
   await context.close();
 });
 
-test('Packing and History descending groups ignore Active manual order; Packing rows newest first',async({page,request})=>{
- const a=await create(request),b=await create(request);
- const sibling=(await post(request,'/servers',{pkf:a.pkf,sn:'SIBLING-'+uuidV4().slice(0,8)})).record;
- const first=(await post(request,`/servers/${a.id}/progress`,{generation:0,stage:4,state:'Success',confirmed:true})).record;
- await post(request,`/servers/${b.id}/progress`,{generation:0,stage:4,state:'Success',confirmed:true});
- await post(request,`/servers/${sibling.id}/progress`,{generation:0,stage:4,state:'Success',confirmed:true});
- const snap=await state(request);await post(request,'/pkfs/order',{pkfs:[...snap.active_order].reverse(),base_version:snap.order_version});
- await ready(page);await page.getByRole('button',{name:'Packing',exact:true}).click();
- const ids=await page.locator('.pkf-group').evaluateAll(nodes=>nodes.map(n=>n.id));expect(ids).toEqual([...ids].sort().reverse());
- const rows=page.locator('#'+a.pkf).locator('tr[data-server-id]');await expect(rows.first()).toHaveAttribute('data-server-id',sibling.id);
- await post(request,`/servers/${a.id}/packing`,{generation:first.generation,confirmed:true});
- await page.getByRole('button',{name:'History',exact:true}).click();await expect(page.locator('#'+a.pkf)).toBeVisible();
- const historyIds=await page.locator('.pkf-group').evaluateAll(nodes=>nodes.map(n=>n.id));expect(historyIds).toEqual([...historyIds].sort().reverse());
+test("Packing and History descending groups ignore Active manual order; Packing rows newest first", async ({
+  page,
+  request,
+}) => {
+  const a = await create(request),
+    b = await create(request);
+  const sibling = (
+    await post(request, "/servers", {
+      pkf: a.pkf,
+      sn: "SIBLING-" + uuidV4().slice(0, 8),
+    })
+  ).record;
+  const first = (
+    await post(request, `/servers/${a.id}/progress`, {
+      generation: 0,
+      stage: 4,
+      state: "Success",
+      confirmed: true,
+    })
+  ).record;
+  await post(request, `/servers/${b.id}/progress`, {
+    generation: 0,
+    stage: 4,
+    state: "Success",
+    confirmed: true,
+  });
+  await post(request, `/servers/${sibling.id}/progress`, {
+    generation: 0,
+    stage: 4,
+    state: "Success",
+    confirmed: true,
+  });
+  const snap = await state(request);
+  await post(request, "/pkfs/order", {
+    pkfs: [...snap.active_order].reverse(),
+    base_version: snap.order_version,
+  });
+  await ready(page);
+  await page.getByRole("button", { name: "Packing", exact: true }).click();
+  const ids = await page
+    .locator(".pkf-group")
+    .evaluateAll((nodes) => nodes.map((n) => n.id));
+  expect(ids).toEqual([...ids].sort().reverse());
+  const rows = page.locator("#" + a.pkf).locator("tr[data-server-id]");
+  await expect(rows.first()).toHaveAttribute("data-server-id", sibling.id);
+  await post(request, `/servers/${a.id}/packing`, {
+    generation: first.generation,
+    confirmed: true,
+  });
+  await page.getByRole("button", { name: "History", exact: true }).click();
+  await expect(page.locator("#" + a.pkf)).toBeVisible();
+  const historyIds = await page
+    .locator(".pkf-group")
+    .evaluateAll((nodes) => nodes.map((n) => n.id));
+  expect(historyIds).toEqual([...historyIds].sort().reverse());
+});
+
+test("Packing duplicate offers View Packing Cancel Return only and keeps readonly identity", async ({
+  page,
+  request,
+}) => {
+  const row = await create(request);
+  await post(request, `/servers/${row.id}/progress`, {
+    generation: 0,
+    stage: 4,
+    state: "Success",
+    confirmed: true,
+  });
+  await ready(page);
+  await page.getByRole("button", { name: "Add PKF", exact: true }).click();
+  await page.getByLabel("PKF number").fill(row.pkf);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  const group = page.locator("#" + row.pkf);
+  await group.getByLabel("Add Server " + row.pkf).fill(row.sn);
+  await group.getByLabel("Add Server " + row.pkf).press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Server already in Packing" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create Anyway" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("button", { name: "View Packing", exact: true }).click();
+  await expect(
+    group.getByRole("button", { name: "Packing Success", exact: true }),
+  ).toBeVisible();
+  await expect(group.getByLabel("SN " + row.sn, { exact: true })).toHaveCount(
+    0,
+  );
 });
