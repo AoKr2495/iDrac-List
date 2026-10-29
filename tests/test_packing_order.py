@@ -157,3 +157,21 @@ def test_packing_return_races_completion_exactly_one_commit(store):
     final=store.snapshot()['servers'][0]
     assert final['generation']==2
     assert (final['pkf'] in store.snapshot()['active_order'])==(final['lifecycle']=='Active')
+
+
+def test_order_get_list_and_version_are_one_read_snapshot(tmp_path):
+    from fastapi.testclient import TestClient
+    from backend.app import create_app
+    app=create_app(Settings(tmp_path/'Data',tmp_path/'Logs'))
+    store=app.state.store
+    create(store);create(store,pkf='PKF26GR00468')
+    original=store.snapshot()['active_order']
+    def writer():
+        for i in range(30):sort(store,list(reversed(original)) if i%2==0 else original)
+    with TestClient(app) as client, ThreadPoolExecutor(max_workers=1) as pool:
+        future=pool.submit(writer)
+        for _ in range(40):
+            response=client.get('/api/pkfs/order');assert response.status_code==200
+            data=response.json()
+            assert data['pkfs']==(original if data['version']%2==0 else list(reversed(original)))
+        future.result()

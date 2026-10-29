@@ -88,6 +88,7 @@ def create_app(settings: Settings | None = None):
     @app.get('/api/pkfs/order')
     def active_order():
         with store.connect() as db:
+            db.execute('BEGIN')
             return store.order_state(db)
 
     @app.post('/api/pkfs/order')

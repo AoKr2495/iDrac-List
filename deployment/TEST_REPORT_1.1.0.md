@@ -11,7 +11,7 @@
 
 2026-10-29，Mac隔离测试目录，不使用默认Data/Logs。
 
-- 后端：52 passed。包括原业务回归、真实Schema1/2迁移、主键/外键/Status/备注/审计保留、迁移失败回滚、并发排序冲突、集合变化、无变化/幂等、业务事务失败回滚、Packing状态流转与并发迁移、日志、真实进程重启持久化。
+- 后端：53 passed。包括原业务回归、真实Schema1/2迁移、主键/外键/Status/备注/审计保留、迁移失败回滚、并发排序冲突、排序读取列表与版本的一致快照、集合变化、无变化/幂等、业务事务失败回滚、Packing状态流转与并发迁移、日志、真实进程重启持久化。
 - 浏览器：17 passed（Chromium自动化）。覆盖HTTP非安全IP且randomUUID不存在、10000个UUID、原UI/SSE/离线/草稿/主题/竖屏、鼠标/触屏/键盘排序、Cancel/Esc/X、Save、失败草稿、远端版本提示/Reload、排序不影响Packing/History、三阶段流转/返工、Packing Status和双客户端同步。
 - TypeScript类型检查通过，Vite生产构建通过，git diff空白检查通过。
 - 现有一条Starlette TestClient/httpx弃用警告，不影响用例；本次未改依赖栈以免扩大范围。
@@ -25,7 +25,7 @@
 - 后端：backend/store.py、backend/app.py。
 - 前端：frontend/src/main.tsx、SortPKFs.tsx（新增）、types.ts、icons.tsx、style.css；frontend/package.json、pnpm-lock.yaml。
 - 测试：tests/test_packing_order.py（新增）、fixtures/schema_v2.sql（新增）、test_core.py、test_pkf_notes.py、test_restart.py、test_business_config.py；frontend/e2e/packing-sort.spec.ts（新增）、workspace.spec.ts。
-- 构建/部署：.github/workflows/offline-release.yml、scripts/prepare_upgrade_fixture.py、scripts/container_smoke.py、VERSION、deployment/UPDATE_1.1.0.md（新增）、UPGRADE_PACKING_DESIGN.md（新增）、本报告、NAS_DEPLOYMENT.md、CHECKLIST.md。
+- 构建/部署：.github/workflows/offline-release.yml、scripts/prepare_upgrade_fixture.py、scripts/container_smoke.py、VERSION、compose.offline.yaml、deployment/UPDATE_1.1.0.md（新增）、UPGRADE_PACKING_DESIGN.md（新增）、本报告、NAS_DEPLOYMENT.md、CHECKLIST.md。
 - 规范：AGENTS.md、SPECIFICATION.md、DESIGN_SYSTEM.md、DEVELOPMENT_PLAN.md、REVIEW_REPORT.md、assets/icons/LUCIDE_MAPPING.md，明确本次已确认规格覆盖旧冲突条款。
 
 ## 风险与限制
