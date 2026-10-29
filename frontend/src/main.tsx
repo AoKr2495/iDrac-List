@@ -7,6 +7,7 @@ import standardLogo from "../../assets/logo/b1-standard.svg";
 import darkLogo from "../../assets/logo/b1-dark.svg";
 import compactLogo from "../../assets/logo/b1-compact.svg";
 import "./style.css";
+import { SortPKFs } from "./SortPKFs";
 
 const stages = [
   "Bios Set-up",
@@ -75,7 +76,9 @@ function Modal({
     <dialog
       ref={ref}
       aria-labelledby="modal-title"
-      className={wide ? "wide" : ""}
+      className={
+        (wide ? "wide " : "") + (title === "Sort PKFs" ? "sort-modal" : "")
+      }
     >
       <div className="dialog-header">
         <h2 id="modal-title">{title}</h2>
@@ -91,7 +94,7 @@ function Modal({
 }
 function App() {
   const { data, online, failure, mutate, refresh } = useWorkspace();
-  const [page, setPage] = useState<"Active" | "History">("Active"),
+  const [page, setPage] = useState<"Active" | "Packing" | "History">("Active"),
     [theme, setTheme] = useState(() =>
       localStorage.getItem("idrac-theme") === "dark" ? "dark" : "light",
     );
@@ -120,10 +123,16 @@ function App() {
     [history, setHistory] = useState<Server | null>(null),
     [confirm, setConfirm] = useState<{
       row: Server;
-      action: "validation" | "return" | "delete";
+      action: "validation" | "packing" | "return" | "delete";
       draftKey?: string;
     } | null>(null),
     [conflict, setConflict] = useState<Server | null>(null);
+  const [sortBusy, setSortBusy] = useState(false);
+  const [sortDragging, setSortDragging] = useState(false);
+  const [sortDraft, setSortDraft] = useState<{
+    pkfs: string[];
+    version: number;
+  } | null>(null);
   const conflictKey = useRef<string | null>(null);
   const [popover, setPopover] = useState<string | null>(null),
     [popupPoint, setPopupPoint] = useState({ top: 0, left: 0 }),
@@ -188,7 +197,11 @@ function App() {
     return `${get("day")}.${get("month")}.${get("year")} ${get("hour")}:${get("minute")}`;
   };
   const notifyError = (e: unknown, key?: string) => {
-    if (e instanceof ApiError && e.code === "duplicate_history" && e.record) {
+    if (
+      e instanceof ApiError &&
+      ["duplicate_history", "duplicate_packing"].includes(e.code) &&
+      e.record
+    ) {
       conflictKey.current = key || null;
       setConflict(e.record);
     }
@@ -272,7 +285,7 @@ function App() {
       return;
     setEditor(null);
   };
-  function navigate(next: "Active" | "History") {
+  function navigate(next: "Active" | "Packing" | "History") {
     if (
       editor &&
       editor.text !== editor.initial &&
@@ -361,8 +374,6 @@ function App() {
       });
     });
   };
-  const position = (pkf: string) =>
-    data?.pkfs.find((p) => p.pkf === pkf)?.position || "Normal";
   const allActive = [
     ...(data?.servers.filter((s) => s.lifecycle === "Active") || []),
   ];
@@ -371,19 +382,23 @@ function App() {
   const rows =
     page === "Active"
       ? allActive
-      : data?.servers.filter((s) => s.lifecycle === "History") || [];
+      : data?.servers.filter((s) => s.lifecycle === page) || [];
   const pkfs = Array.from(
     new Set([
       ...rows.map((r) => r.pkf),
       ...(page === "Active" ? temporary : []),
     ]),
   );
-  const positions = ["Pinned", "Normal", "Bottom"];
   pkfs.sort((a, b) =>
-    page === "History"
+    page !== "Active"
       ? b.localeCompare(a)
-      : positions.indexOf(position(a)) - positions.indexOf(position(b)) ||
-        a.localeCompare(b),
+      : (data?.active_order.indexOf(a) ?? -1) < 0
+        ? (data?.active_order.indexOf(b) ?? -1) < 0
+          ? temporary.indexOf(a) - temporary.indexOf(b)
+          : 1
+        : (data?.active_order.indexOf(b) ?? -1) < 0
+          ? -1
+          : data!.active_order.indexOf(a) - data!.active_order.indexOf(b),
   );
   const orphaned = Object.entries(drafts).filter(
     ([id, d]) =>
@@ -446,10 +461,12 @@ function App() {
         } else setConfirm(null);
         setToast(
           action === "validation"
-            ? "Validation 完成 · 已移入 History"
-            : action === "return"
-              ? "已返回 Active"
-              : "Server 已删除，审计已保留",
+            ? "Validation 完成 · 已移入 Packing"
+            : action === "packing"
+              ? "Packing 完成 · 已移入 History"
+              : action === "return"
+                ? "已返回 Active"
+                : "Server 已删除，审计已保留",
         );
         if (action === "return" && result.record) {
           if (draftKey) forget(draftKey);
@@ -605,7 +622,7 @@ function App() {
         </div>
         <div className="workspace-label">WORKSPACE</div>
         <nav>
-          {(["Active", "History"] as const).map((p) => (
+          {(["Active", "Packing", "History"] as const).map((p) => (
             <button
               key={p}
               title={p}
@@ -615,7 +632,11 @@ function App() {
             >
               <Icon
                 name={
-                  p === "Active" ? "navigation.active" : "navigation.history"
+                  p === "Active"
+                    ? "navigation.active"
+                    : p === "Packing"
+                      ? "navigation.packing"
+                      : "navigation.history"
                 }
                 size={20}
               />
@@ -703,14 +724,34 @@ function App() {
               </p>
             </div>
             {page === "Active" && (
-              <button
-                className="primary"
-                disabled={!online}
-                onClick={() => setAdding(!adding)}
-              >
-                <Icon name="action.add" />
-                Add PKF
-              </button>
+              <div className="page-tools">
+                <button
+                  className="primary"
+                  disabled={!online}
+                  onClick={() => setAdding(!adding)}
+                >
+                  <Icon name="action.add" />
+                  Add PKF
+                </button>
+                <button
+                  disabled={!online}
+                  onClick={async () => {
+                    try {
+                      await refresh();
+                      const r = await fetch("/api/pkfs/order", {
+                        cache: "no-store",
+                      });
+                      if (!r.ok) throw Error("无法获取排序");
+                      setSortDraft(await r.json());
+                    } catch (e) {
+                      setGlobalError(String(e));
+                    }
+                  }}
+                >
+                  <Icon name="action.sort" />
+                  Sort PKFs
+                </button>
+              </div>
             )}
           </div>
           {adding && (
@@ -811,12 +852,16 @@ function App() {
               <h2>
                 {page === "Active"
                   ? "Ready for the next server"
-                  : "No completed servers yet"}
+                  : page === "Packing"
+                    ? "No servers awaiting packing"
+                    : "No completed servers yet"}
               </h2>
               <p>
                 {page === "Active"
                   ? "添加 PKF，开始管理 Server 工作进度。"
-                  : "完成 Validation 后，Server 将自动出现在这里。"}
+                  : page === "Packing"
+                    ? "完成 Validation 后，Server 将出现在这里。"
+                    : "完成 Packing 后，Server 将出现在这里。"}
               </p>
               {page === "Active" && (
                 <button
@@ -837,25 +882,18 @@ function App() {
                 (a, b) =>
                   (page === "Active"
                     ? a.created_at.localeCompare(b.created_at)
-                    : (b.completed_at || "").localeCompare(
-                        a.completed_at || "",
+                    : (page === "Packing"
+                        ? b.packing_entered_at || ""
+                        : b.completed_at || ""
+                      ).localeCompare(
+                        page === "Packing"
+                          ? a.packing_entered_at || ""
+                          : a.completed_at || "",
                       )) || a.id.localeCompare(b.id),
               );
-            const pos = position(pkf);
-            const showSection =
-              page === "Active" &&
-              (index === 0 || position(pkfs[index - 1]) !== pos);
             return (
               <React.Fragment key={pkf}>
-                {showSection && (
-                  <div className="section-label">
-                    {pos}
-                    <span>
-                      {pkfs.filter((k) => position(k) === pos).length} groups
-                    </span>
-                  </div>
-                )}
-                <section className={"pkf-group " + pos.toLowerCase()} id={pkf}>
+                <section className="pkf-group" id={pkf}>
                   <div className="group-header">
                     <div className="group-name">
                       <span className="group-dot" />
@@ -870,7 +908,7 @@ function App() {
                         className="pkf-note-input"
                         aria-label={`PKF note ${pkf}`}
                         title={
-                          page === "History"
+                          page !== "Active"
                             ? savedNote(pkf)
                             : (noteDrafts[pkf]?.value ?? savedNote(pkf))
                         }
@@ -880,11 +918,11 @@ function App() {
                             : "添加 Server 后可填写备注"
                         }
                         value={
-                          page === "History"
+                          page !== "Active"
                             ? savedNote(pkf)
                             : (noteDrafts[pkf]?.value ?? savedNote(pkf))
                         }
-                        readOnly={page === "History"}
+                        readOnly={page !== "Active"}
                         disabled={
                           page === "Active" &&
                           (!online || !group.length || busy.has("note:" + pkf))
@@ -939,44 +977,6 @@ function App() {
                               : ""}
                       </span>
                     </div>
-                    {page === "Active" && (
-                      <div className="group-actions">
-                        <ButtonIcon
-                          name={pos === "Pinned" ? "pkf.unpin" : "pkf.pin"}
-                          label={
-                            pos === "Pinned" ? "Restore Normal" : "Pin PKF"
-                          }
-                          disabled={!online}
-                          onClick={() =>
-                            void perform(pkf, async () => {
-                              if (!group.length) throw Error("请先添加 Server");
-                              await mutate(`/pkfs/${pkf}/position`, {
-                                position:
-                                  pos === "Pinned" ? "Normal" : "Pinned",
-                              });
-                            })
-                          }
-                        />
-                        <ButtonIcon
-                          name="pkf.bottom"
-                          label={
-                            pos === "Bottom"
-                              ? "Restore Normal"
-                              : "Move to Bottom"
-                          }
-                          disabled={!online}
-                          onClick={() =>
-                            void perform(pkf, async () => {
-                              if (!group.length) throw Error("请先添加 Server");
-                              await mutate(`/pkfs/${pkf}/position`, {
-                                position:
-                                  pos === "Bottom" ? "Normal" : "Bottom",
-                              });
-                            })
-                          }
-                        />
-                      </div>
-                    )}
                   </div>
                   {errors[pkf] && <p className="error">{errors[pkf]}</p>}
                   <div className="table-scroll">
@@ -995,10 +995,10 @@ function App() {
                           <th>Model</th>
                           <th>OS</th>
                           <th>
-                            {page === "Active" ? "Status" : "Status History"}
+                            {page !== "History" ? "Status" : "Status History"}
                           </th>
                           <th>
-                            {page === "Active" ? "Progress" : "Completed"}
+                            {page !== "History" ? "Progress" : "Completed"}
                           </th>
                           <th>
                             <span className="sr-only">Actions</span>
@@ -1068,7 +1068,7 @@ function App() {
                               )}
                             </td>
                             <td>
-                              {page === "Active" ? (
+                              {page !== "History" ? (
                                 <div className="status-input">
                                   <button
                                     className="status-text"
@@ -1110,6 +1110,18 @@ function App() {
                             <td>
                               {page === "Active" ? (
                                 progress(row)
+                              ) : page === "Packing" ? (
+                                <button
+                                  className="packing-success"
+                                  disabled={!online}
+                                  onClick={() => {
+                                    setErrors((p) => ({ ...p, confirm: "" }));
+                                    setConfirm({ row, action: "packing" });
+                                  }}
+                                >
+                                  <Icon name="state.success" size={16} />
+                                  Packing Success
+                                </button>
                               ) : (
                                 <span className="completed">
                                   <Icon name="state.success" size={16} />
@@ -1289,14 +1301,46 @@ function App() {
           </div>
         </Modal>
       )}
+      {sortDraft && (
+        <Modal
+          title="Sort PKFs"
+          wide
+          onClose={() => {
+            if (!sortBusy && !sortDragging) setSortDraft(null);
+          }}
+        >
+          <SortPKFs
+            onBusy={setSortBusy}
+            onDragging={setSortDragging}
+            initial={sortDraft.pkfs}
+            version={sortDraft.version}
+            remoteVersion={data?.order_version ?? sortDraft.version}
+            notes={Object.fromEntries(
+              (data?.pkfs || []).map((p) => [p.pkf, p.note]),
+            )}
+            online={online}
+            close={() => setSortDraft(null)}
+            save={(pkfs, base_version) =>
+              mutate("/pkfs/order", { pkfs, base_version })
+            }
+            reload={async () => {
+              const r = await fetch("/api/pkfs/order", { cache: "no-store" });
+              if (!r.ok) throw Error("无法获取最新顺序");
+              return r.json();
+            }}
+          />
+        </Modal>
+      )}
       {confirm && (
         <Modal
           title={
             confirm.action === "validation"
               ? "Confirm Validation"
-              : confirm.action === "delete"
-                ? "Delete Server"
-                : "Return to Active"
+              : confirm.action === "packing"
+                ? "Confirm Packing Success"
+                : confirm.action === "delete"
+                  ? "Delete Server"
+                  : "Return to Active"
           }
           onClose={() => {
             if (!busy.has("confirm")) setConfirm(null);
@@ -1308,10 +1352,12 @@ function App() {
           </p>
           <p className="confirm-copy">
             {confirm.action === "validation"
-              ? "请确认该 Server 的所有工作均已完成。确认后，该 Server 将从当前任务中移除并进入 History。"
-              : confirm.action === "delete"
-                ? "确认删除该 Server？删除不会进入 History，完整快照和操作审计将永久保留。"
-                : "确认返工？该 Server 将回到原 PKF，Progress 重置为 Not Started，Status History 完整保留。"}
+              ? "请确认该 Server 的所有工作均已完成。确认后，该 Server 将从当前任务中移除并进入 Packing。"
+              : confirm.action === "packing"
+                ? "确认打包完成？该 Server 将进入 History，Status History 完整保留。"
+                : confirm.action === "delete"
+                  ? "确认删除该 Server？删除不会进入 History，完整快照和操作审计将永久保留。"
+                  : "确认返工？该 Server 将回到原 PKF，Progress 重置为 Not Started，Status History 完整保留。"}
           </p>
           {validationReminders.length > 0 && (
             <section
@@ -1352,7 +1398,7 @@ function App() {
       )}
       {conflict && (
         <Modal
-          title="Server already in History"
+          title={`Server already in ${conflict.lifecycle}`}
           onClose={() => setConflict(null)}
         >
           <dl className="record-detail">
@@ -1364,14 +1410,26 @@ function App() {
             <dd>{conflict.model || "—"}</dd>
             <dt>OS</dt>
             <dd>{conflict.os || "—"}</dd>
-            <dt>Completed</dt>
-            <dd>{date(conflict.completed_at)}</dd>
+            <dt>
+              {conflict.lifecycle === "Packing"
+                ? "Entered Packing"
+                : "Completed"}
+            </dt>
+            <dd>
+              {date(
+                conflict.lifecycle === "Packing"
+                  ? conflict.packing_entered_at
+                  : conflict.completed_at,
+              )}
+            </dd>
           </dl>
           <div className="dialog-actions">
             <button onClick={() => setConflict(null)}>Cancel</button>
             <button
               onClick={() => {
-                setPage("History");
+                setPage(
+                  conflict.lifecycle === "Packing" ? "Packing" : "History",
+                );
                 setConflict(null);
                 setTimeout(
                   () => document.getElementById(conflict.pkf)?.scrollIntoView(),
@@ -1379,7 +1437,7 @@ function App() {
                 );
               }}
             >
-              View History
+              View {conflict.lifecycle}
             </button>
             <button
               className="primary"

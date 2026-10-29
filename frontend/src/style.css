@@ -377,12 +377,6 @@ h1 {
   background: var(--surface);
   scroll-margin: 24px;
 }
-.pkf-group.pinned {
-  border-left-color: #8b5cf6;
-}
-.pkf-group.bottom {
-  border-left-color: #64748b;
-}
 .group-header {
   height: 56px;
   display: flex;
@@ -400,12 +394,6 @@ h1 {
   height: 7px;
   background: var(--accent);
   border-radius: 50%;
-}
-.pinned .group-dot {
-  background: #8b5cf6;
-}
-.bottom .group-dot {
-  background: #64748b;
 }
 .group-name h2 {
   font-size: 16px;
@@ -1048,4 +1036,85 @@ tr.removing {
   .pkf-note-field {
     min-width: 50px;
   }
+}
+
+.page-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+.page-tools > .primary {
+  min-height: 38px;
+  padding: 8px 16px;
+}
+.packing-success {
+  color: var(--success);
+  font-size: 12px;
+}
+.sort-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.sort-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  max-height: 45vh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.sort-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  position: relative;
+}
+.sort-item strong {
+  white-space: nowrap;
+  font-size: 13px;
+}
+.sort-item > span {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.sort-item.dragging {
+  z-index: 2;
+  box-shadow: var(--shadow);
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.sort-handle {
+  touch-action: none;
+  cursor: grab;
+  flex-shrink: 0;
+}
+.sort-handle:active {
+  cursor: grabbing;
+}
+
+/* Keep sorting controls outside the only scrolling region. */
+dialog.sort-modal[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sort-modal .dialog-header,
+.sort-modal .dialog-actions {
+  flex-shrink: 0;
+}
+.sort-modal .sort-body {
+  overflow: hidden;
+}
+.sort-modal .sort-list {
+  flex: 1;
+  min-height: 0;
 }

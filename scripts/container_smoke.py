@@ -24,26 +24,32 @@ if sys.argv[1]=='seed':
     if baseline.exists():
         expected=json.loads(baseline.read_text())
         snapshot=call('/api/state')
-        actual={'servers':snapshot['servers'],'pkfs':[{k:v for k,v in group.items() if k!='note'} for group in snapshot['pkfs']],'revision':snapshot['revision']}
-        assert actual==expected, 'Existing v1 business data changed during container upgrade'
-        assert all(group['note']=='' for group in snapshot['pkfs'])
-        print('Existing v1 business/History/Status/order/revision preserved by v2 image upgrade.')
+        for row in expected['servers']:
+            actual=next(r for r in snapshot['servers'] if r['id']==row['id'])
+            assert all(actual[k]==v for k,v in row.items()), 'Existing business data changed'
+        assert snapshot['pkfs']==expected['pkfs']
+        assert snapshot['active_order']==['PKF26GR00001','PKF25GR00001','PKF26GR00002']
+        assert next(r for r in snapshot['servers'] if r['id']=='CI-HISTORY')['status_history'][0]['text']=='Pre-upgrade history'
+        print('Schema-v2 business/History/Status/notes/order preserved by schema-v3 upgrade.')
 
     with urllib.request.urlopen(BASE+'/') as response:
         assert b'<div id="root"></div>' in response.read()
     row=call('/api/servers',dict(pkf='PKF26GR00467',sn='CI-PERSISTENCE'))['record']
-    call('/api/pkfs/PKF26GR00467/position',dict(position='Pinned'))
+    snap=call('/api/state')
+    call('/api/pkfs/order',dict(pkfs=list(reversed(snap['active_order'])),base_version=snap['order_version']))
     call(f"/api/servers/{row['id']}/status",dict(generation=0,text='Persist across container restart'))
     complete=call(f"/api/servers/{row['id']}/progress",dict(generation=0,stage=4,state='Success',confirmed=True))['record']
-    MARKER.write_text(json.dumps(complete))
+    assert complete['lifecycle']=='Packing'
+    complete=call(f"/api/servers/{row['id']}/packing",dict(generation=1,confirmed=True))['record']
+    MARKER.write_text(json.dumps(dict(record=complete,order=call('/api/state')['active_order'])))
 else:
-    prior=json.loads(MARKER.read_text());snapshot=call('/api/state')
+    marker=json.loads(MARKER.read_text());prior=marker['record'];snapshot=call('/api/state')
     current=next(r for r in snapshot['servers'] if r['id']==prior['id'])
     assert current['lifecycle']=='History' and current['completed_at']==prior['completed_at']
     assert current['status_history']==prior['status_history']
-    assert snapshot['pkfs'][0]['position']=='Pinned'
-    active=call(f"/api/servers/{current['id']}/return",dict(generation=1,confirmed=True))['record']
-    call(f"/api/servers/{current['id']}/delete",dict(generation=2,confirmed=True))
+    assert snapshot['active_order']==marker['order']
+    active=call(f"/api/servers/{current['id']}/return",dict(generation=2,confirmed=True))['record']
+    call(f"/api/servers/{current['id']}/delete",dict(generation=3,confirmed=True))
     for attempt in range(15):
         if call('/api/health')['pending_logs']==0:break
         time.sleep(1)

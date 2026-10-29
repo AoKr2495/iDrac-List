@@ -211,3 +211,20 @@ V1 无账号，user_id/created_by/updated_by 可空，不假冒用户身份；�
 ## 17. HTTP UUID 兼容修复与 1.0.1 发布 — Confirmed
 
 局域网 IP + HTTP 必须正常渲染，不要求 HTTPS。统一 UUID v4 使用 getRandomValues 替代 randomUUID 直接依赖；业务规则不变。用户追加明确要求将最新 PKF 改动与此修复一起打包并 push GitHub。交付 Linux amd64 离线包供用户确认，不直接部署 NAS，不操作 NAS Data/Logs；新版备注字段首次启动的兼容升级需要明确告知，并遵循现有停服备份/原挂载保留流程。
+
+## 1.1.0 增量规格 — Confirmed，覆盖此前冲突规则
+
+来源：2026-10-29 用户 Active 手动排序 + Packing 完整任务与三项确认。
+
+- Active 取消三分类、按编号自动排序、置顶/沉底入口及视觉标识；只有一套全局手动顺序，持久化并通过 SSE 共享。
+- Add PKF 下方 Sort PKFs 打开独立 Modal。包含每个正式 Active PKF 的完整编号、只读备注、六点手柄；只有手柄允许鼠标/触屏/键盘排序，主页面不拖拽。列表滚动、浮起和让位反馈、视口限制、底部操作固定可达。
+- 打开取得服务端顺序及基准版本。拖动仅改变草稿；Cancel/X/Esc 不写入；Save 提交完整集合及版本。未变禁用，保存中防重复，失败保留草稿。SSE 不重排草稿；成员/版本变化提示 Reload，过期保存拒绝而不覆盖。
+- 新正式分组和已消失后再次出现的分组追加底部；已有组增加 Server 不换位；最后一台离开移除分组；临时空卡片底部展示但不持久化、不进入排序 Modal。排序不能改变所属关系或其他工作区。
+- Sidebar 顺序 Active/Packing/History。Validation 确认文案说明进入 Packing，事务迁移当前 Server，同组其他 Server 不变。
+- Packing 为独立工作区，按 History 相同编号倒序分组；组内按 packing_entered_at 倒序（相同时间按身份稳定比较），备注只读；SN/Model/OS 只读；Status 与 Active 复用全部保存/历史/并发/草稿规则；Progress 为 Packing Success，显示确认后事务进入 History。
+- completed_at 在 Packing Success 设置；进入 Packing 使用独立时间，不把 Validation 时间当成最终完成时间。原 History 不迁移。
+- Packing/History 菜单 Return to Active 均确认，复用身份，保留字段/Status/历史/备注/审计，进度重置；Active 已有组位置不变，否则末尾追加。
+- 全局 PKF+SN 唯一覆盖 Active/Packing/History。Packing 冲突显示记录，提供 View Packing/Cancel/Return to Active，不提供 Create Anyway。
+- Schema 2→3 事务迁移，初始化手动顺序为旧 Pinned/Normal/Bottom及组内编号升序；保留主键、外键、原数据/历史/日志/配置。未知未来 Schema 拒绝启动。旧镜像不能直接读取3，回退必须恢复升级前数据库备份。
+- 每个阶段迁移增加 generation，拒绝过期编辑；Status 同阶段 LWW，每次有效Save独立追加；排序乐观并发独立于全局审计revision。新事件继续不可变审计/outbox和SSE。
+- 不直接部署NAS，不清空/覆盖正式Data/Logs，不使用空库初始化参数。交付amd64离线镜像、完整ZIP、校验与备份/验证/回退手册。

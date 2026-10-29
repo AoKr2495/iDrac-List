@@ -123,6 +123,11 @@ test("full UI lifecycle: add, edit, status, progress, validation and return", as
     .click();
   await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect(section).toHaveCount(0);
+  await page.getByRole("button", { name: "Packing", exact: true }).click();
+  await section
+    .getByRole("button", { name: "Packing Success", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Confirm", exact: true }).click();
   await page.getByRole("button", { name: "History", exact: true }).click();
   await expect(section.getByText(sn, { exact: true })).toBeVisible();
   await expect(section.getByLabel("Progress " + sn)).toHaveCount(0);
@@ -180,11 +185,12 @@ test("history duplicate has only allowed choices; deleted row cannot be edited",
   request,
 }) => {
   const row = await create(request);
-  await change(request, row, "progress", {
+  const packing = await change(request, row, "progress", {
     stage: 4,
     state: "Success",
     confirmed: true,
   });
+  await change(request, packing, "packing", { confirmed: true });
   await ready(page);
   await page.getByRole("button", { name: "Add PKF", exact: true }).click();
   await page.getByLabel("PKF number").fill(row.pkf);
@@ -302,28 +308,14 @@ test("portrait uses sidebar open button and retains complete desktop table", asy
   await expect(page.getByLabel("Open sidebar")).toBeVisible();
 });
 
-test("PKF position toggles persist and a located group vanishes after final completion", async ({
+test("located group vanishes after final Validation enters Packing", async ({
   page,
   request,
 }) => {
   const row = await create(request);
   await ready(page);
   const section = page.locator("#" + row.pkf);
-  await section.locator(".group-header").hover();
-  await section.getByLabel("Pin PKF", { exact: true }).click();
-  await expect(section).toHaveClass(/pinned/);
-  await page.reload();
-  await expect(page.getByText("Live · NAS")).toBeVisible();
-  await expect(section).toHaveClass(/pinned/);
-  await section.locator(".group-header").hover();
-  await section.getByLabel("Restore Normal", { exact: true }).click();
-  await expect(section).toHaveClass(/normal/);
-  await section.locator(".group-header").hover();
-  await section.getByLabel("Move to Bottom", { exact: true }).click();
-  await expect(section).toHaveClass(/bottom/);
-  await section.locator(".group-header").hover();
-  await section.getByLabel("Restore Normal", { exact: true }).click();
-  await expect(section).toHaveClass(/normal/);
+  await expect(section.getByLabel("Pin PKF", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Add PKF", exact: true }).click();
   await page.getByLabel("PKF number").fill(row.pkf);
   await page.getByRole("button", { name: "Create", exact: true }).click();
@@ -435,7 +427,7 @@ test("PKF notes stay inline, synchronize, preserve offline draft and survive ret
     state: "Success",
     confirmed: true,
   });
-  await one.getByRole("button", { name: "History", exact: true }).click();
+  await one.getByRole("button", { name: "Packing", exact: true }).click();
   await expect(input).toHaveValue("LOCAL NOTE DRAFT");
   await expect(input).toHaveAttribute("readonly", "");
   await change(request, h, "return", { confirmed: true });

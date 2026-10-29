@@ -27,7 +27,8 @@ def test_global_uniqueness_and_history_conflict(store):
     with pytest.raises(Problem) as e: create(store)
     assert e.value.code=='duplicate_active'
     create(store,pkf='PKF26GR00468')
-    h=op(store,'progress',a,stage=4,state='Success',confirmed=True)['record']
+    p=op(store,'progress',a,stage=4,state='Success',confirmed=True)['record']
+    h=op(store,'packing',p,confirmed=True)['record']
     with pytest.raises(Problem) as e: create(store)
     assert e.value.code=='duplicate_history' and e.value.record['id']==h['id']
     with store.connect() as db:
@@ -50,10 +51,11 @@ def test_validation_return_stale_and_delete(store):
     a=create(store)
     op(store,'status',a,text='note')
     with pytest.raises(Problem): op(store,'progress',a,stage=4,state='Success')
-    h=op(store,'progress',a,stage=4,state='Success',confirmed=True)['record']
-    assert h['completed_at'] and h['generation']==1 and h['id']==a['id']
+    p=op(store,'progress',a,stage=4,state='Success',confirmed=True)['record']
+    h=op(store,'packing',p,confirmed=True)['record']
+    assert h['completed_at'] and h['generation']==2 and h['id']==a['id']
     with pytest.raises(Problem) as exc: op(store,'status',a,text='old')
-    assert exc.value.code=='completed' and exc.value.message=='Server 已完成'
+    assert exc.value.code=='completed' and exc.value.message=='Server 阶段已变化，请刷新后重试'
     with pytest.raises(Problem): op(store,'edit',h,changes={'model':'R250'})
     b=op(store,'return',h,confirmed=True)['record']
     assert b['id']==a['id'] and b['stage']==-1 and b['completed_at'] is None and b['status_history'][0]['text']=='note'
@@ -64,7 +66,7 @@ def test_validation_return_stale_and_delete(store):
     assert create(store)['id']!=a['id']
     with store.connect() as db:
         snapshot=json.loads(db.execute('SELECT snapshot_json FROM deleted_snapshots').fetchone()[0])
-        assert snapshot['status_history'][0]['text']=='note' and len(snapshot['operations'])==5
+        assert snapshot['status_history'][0]['text']=='note' and len(snapshot['operations'])==6
         with pytest.raises(sqlite3.IntegrityError): db.execute('DELETE FROM deleted_snapshots')
 
 def test_progress_and_last_write_wins(store):
@@ -117,9 +119,10 @@ def test_log_failure_does_not_lose_snapshot(store):
 
 def test_position_persistence_and_sn_binary(store):
     a=create(store,' A '); create(store,'a')
-    store.mutate('position',a['pkf'],dict(operation_id=str(uuid.uuid4()),position='Pinned'))
+    with pytest.raises(Problem):
+        store.mutate('position',a['pkf'],dict(operation_id=str(uuid.uuid4()),position='Pinned'))
     op(store,'delete',a,confirmed=True)
-    assert Store(store.settings).snapshot()['pkfs'][0]['position']=='Pinned'
+    assert Store(store.settings).snapshot()['active_order']==[a['pkf']]
 
 def test_api(tmp_path):
     app=create_app(Settings(tmp_path/'Data',tmp_path/'Logs'))
@@ -151,7 +154,8 @@ def test_transaction_rollback_does_not_leave_business_or_audit(store):
 
 def test_edit_sn_history_conflict_and_optional_fields(store):
     a=create(store,'A'); b=create(store,'B')
-    op(store,'progress',a,stage=4,state='Success',confirmed=True)
+    p=op(store,'progress',a,stage=4,state='Success',confirmed=True)['record']
+    op(store,'packing',p,confirmed=True)
     with pytest.raises(Problem) as e:op(store,'edit',b,changes={'sn':' A '})
     assert e.value.code=='duplicate_history'
     assert store.snapshot()['servers'][1]['sn']=='B'

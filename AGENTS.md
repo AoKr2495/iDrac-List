@@ -46,3 +46,7 @@ SVG 为源文件。四份附件仅为参考，正式 SVG 只使用 iD 图形、�
 ## 1.0.1 合并发布授权
 
 用户明确要求 HTTP UUID 修复与最新 PKF 改动一同打包并 push GitHub。允许提交 main 并通过 CI 构建验证 amd64 离线包；不得直接部署或操作 NAS Data/Logs。新版包含 PKF 字段的兼容性添加，必须在更新说明明示；不得混淆为目录搬迁或清空数据。
+
+## 1.1.0 升级规格优先级 — Confirmed
+
+2026-10-29 用户完整升级任务及三项答复优先于旧版冲突条款：取消 Pinned/Normal/Bottom，Active 使用带独立版本的全局手动顺序；正式分组仅包含有 Active Server 的 PKF，临时空卡片不参与排序。新增 Packing，正常流程 Active→Validation Success→Packing→Packing Success→History，单一身份、唯一键和审计不变。Packing 行按进入时间倒序；最终完成时间在打包完成时设置；Status 可编辑，其他原字段和备注只读。Packing 重复冲突提供 View Packing/Cancel/Return to Active。返工重置进度，缺失的 Active 分组追加到底部。迁移/测试只用隔离数据，不运行默认 Data 的新版本，不操作 NAS。完整技术设计与升级手册见 deployment/UPGRADE_PACKING_DESIGN.md、deployment/UPDATE_1.1.0.md。

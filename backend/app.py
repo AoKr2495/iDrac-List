@@ -25,6 +25,8 @@ class Mutation(BaseModel):
     state: str | None = None
     confirmed: bool = False
     position: str | None = None
+    pkfs: list[str] | None = None
+    base_version: int | None = None
 
 
 def create_app(settings: Settings | None = None):
@@ -83,6 +85,15 @@ def create_app(settings: Settings | None = None):
     def apply(action, sid, body, request):
         return store.mutate(action,sid,body.model_dump(exclude_none=True),request.headers.get('X-Client-ID','anonymous')[:128],request.headers.get('X-Request-ID',str(uuid.uuid4()))[:128])
 
+    @app.get('/api/pkfs/order')
+    def active_order():
+        with store.connect() as db:
+            return store.order_state(db)
+
+    @app.post('/api/pkfs/order')
+    def save_order(body: Mutation, request: Request):
+        return apply('sort','active-order',body,request)
+
     @app.post('/api/servers')
     def create(body: Mutation, request: Request):
         return apply('create','',body,request)
@@ -97,7 +108,7 @@ def create_app(settings: Settings | None = None):
 
     @app.post('/api/servers/{sid}/{action}')
     def change(sid: str, action: str, body: Mutation, request: Request):
-        if action not in ('edit','status','progress','return','delete'):
+        if action not in ('edit','status','progress','return','delete','packing'):
             raise Problem('not_found','未知操作',404)
         return apply(action,sid,body,request)
 

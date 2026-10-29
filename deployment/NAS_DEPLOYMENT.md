@@ -252,3 +252,7 @@ V1 不做应用内部自动备份。将配置、Data/、Logs/ 纳入 NAS 的快�
 
 Docker 镜像可通过 save 保存为 tar、load 从文件恢复，用于离线传输：[docker image save](https://docs.docker.com/reference/cli/docker/image/save/)、[docker image load](https://docs.docker.com/reference/cli/docker/image/load/)。离线 Compose 启动选项见 [docker compose up](https://docs.docker.com/reference/cli/docker/compose/up/)。
 QNAP 的 Container Station 支持本地镜像与 Compose 应用，具体界面依版本而异：[Container Station Quick Start Guide](https://www.qnap.com/en/how-to/tutorial/article/container-station-quick-start-guide)。关于 QTS 5.1/Container Station 3 的 Compose 命令形式，见 [QNAP：为什么不能使用 docker-compose](https://www.qnap.com.cn/zh-cn/how-to/faq/article/why-cant-i-use-docker-compose-commands-in-container-station)。
+
+## 1.1.0 增量升级入口
+
+已运行旧版的NAS请优先完整阅读UPDATE_1.1.0.md；本版含Schema3与Packing工作区，不能仅切旧镜像回退。原Data/Logs/config挂载与UID/GID保持，禁止用新包空目录覆盖。

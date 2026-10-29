@@ -8,14 +8,17 @@ export type Server = {
   status: string;
   stage: number;
   progress_state: string;
-  lifecycle: "Active" | "History" | "Deleted";
+  lifecycle: "Active" | "Packing" | "History" | "Deleted";
   generation: number;
   created_at: string;
   updated_at: string;
+  packing_entered_at: string | null;
   completed_at: string | null;
   status_history: HistoryEntry[];
 };
 export type Snapshot = {
+  active_order: string[];
+  order_version: number;
   servers: Server[];
   pkfs: { pkf: string; position: string; note: string }[];
   revision: number;

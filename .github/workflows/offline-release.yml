@@ -1,7 +1,7 @@
 name: Build and verify offline NAS bundle
 on:
   push:
-    branches: [main]
+    branches: [main, upgrade/manual-sort-packing]
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,9 +43,19 @@ jobs:
           python scripts/container_smoke.py seed
           docker restart idrac-smoke
           python scripts/container_smoke.py verify
-          PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/browsers" IDRAC_TEST_PORT=18088 IDRAC_TEST_URL=http://127.0.0.1:18088 node frontend/node_modules/@playwright/test/cli.js test --config frontend/playwright.config.ts --grep 'HTTP non-secure|UUID helper'
+          PLAYWRIGHT_BROWSERS_PATH="$PWD/.cache/browsers" IDRAC_TEST_PORT=18088 IDRAC_TEST_URL=http://127.0.0.1:18088 node frontend/node_modules/@playwright/test/cli.js test --config frontend/playwright.config.ts
           docker logs idrac-smoke
           docker rm -f idrac-smoke
+          docker run -d --name idrac-offline --network none --pull never -v "$PWD/.cache/smoke/Data:/app/Data" -v "$PWD/.cache/smoke/Logs:/app/Logs" "$IMAGE"
+          for attempt in $(seq 1 30); do
+            if docker exec idrac-offline python -c "import urllib.request,json; s=json.load(urllib.request.urlopen('http://127.0.0.1:8088/api/state')); assert len(s['servers'])>0 and len(s['active_order'])>0"; then break; fi
+            sleep 1
+          done
+          docker exec idrac-offline python -c "import urllib.request,json; assert json.load(urllib.request.urlopen('http://127.0.0.1:8088/api/health'))['status']=='ok'"
+          docker restart idrac-offline
+          sleep 3
+          docker exec idrac-offline python -c "import urllib.request,json; s=json.load(urllib.request.urlopen('http://127.0.0.1:8088/api/state')); assert len(s['servers'])>0 and len(s['active_order'])>0"
+          docker rm -f idrac-offline
       - name: Export image and package full folder
         run: |
           docker save -o .cache/idrac-list-amd64.tar "$IMAGE"

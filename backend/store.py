@@ -39,11 +39,12 @@ CREATE TABLE IF NOT EXISTS pkfs(pkf TEXT PRIMARY KEY, position TEXT NOT NULL DEF
 CREATE TABLE IF NOT EXISTS servers(
  id TEXT PRIMARY KEY, pkf TEXT NOT NULL REFERENCES pkfs(pkf), sn TEXT NOT NULL COLLATE BINARY CHECK(length(sn)>0),
  model TEXT, os TEXT, status TEXT NOT NULL DEFAULT '', stage INTEGER NOT NULL DEFAULT -1 CHECK(stage BETWEEN -1 AND 4),
- progress_state TEXT NOT NULL DEFAULT '', lifecycle TEXT NOT NULL DEFAULT 'Active' CHECK(lifecycle IN ('Active','History','Deleted')),
- generation INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT,
+ progress_state TEXT NOT NULL DEFAULT '', lifecycle TEXT NOT NULL DEFAULT 'Active' CHECK(lifecycle IN ('Active','Packing','History','Deleted')),
+ generation INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, completed_at TEXT, packing_entered_at TEXT,
  user_id TEXT, created_by TEXT, updated_by TEXT,
  CHECK ((stage=-1 AND progress_state='') OR (stage BETWEEN 0 AND 3 AND progress_state IN ('ing','Success','Fail')) OR (stage=4 AND progress_state='Success')),
- CHECK ((lifecycle='History' AND completed_at IS NOT NULL AND stage=4) OR lifecycle!='History')
+ CHECK ((lifecycle='History' AND completed_at IS NOT NULL AND stage=4) OR lifecycle!='History'),
+ CHECK (lifecycle!='Packing' OR (stage=4 AND progress_state='Success' AND packing_entered_at IS NOT NULL))
 );
 CREATE UNIQUE INDEX IF NOT EXISTS business_key ON servers(pkf,sn) WHERE lifecycle!='Deleted';
 CREATE TABLE IF NOT EXISTS status_history(id INTEGER PRIMARY KEY AUTOINCREMENT, server_id TEXT NOT NULL REFERENCES servers(id), text TEXT NOT NULL, saved_at TEXT NOT NULL, user_id TEXT);
@@ -65,15 +66,38 @@ class Store:
         self.log_lock = threading.Lock()
         with self.connect() as db:
             db.execute('PRAGMA journal_mode=WAL')
-            # Version 1 databases already contain real NAS/local data. Add only a
-            # default-empty PKF field, in a single migration transaction.
-            db.executescript('BEGIN IMMEDIATE;\n' + SCHEMA)
             version = db.execute('PRAGMA user_version').fetchone()[0]
-            if version > 2:
+            if version > 3:
                 raise RuntimeError('Database schema is newer than this application')
-            if 'note' not in {row['name'] for row in db.execute('PRAGMA table_info(pkfs)')}:
-                db.execute("ALTER TABLE pkfs ADD COLUMN note TEXT NOT NULL DEFAULT ''")
-            db.execute('PRAGMA user_version=2')
+            # Rebuild only the constrained parent table with FK enforcement disabled
+            # outside the transaction; dependent table declarations retain servers.
+            db.execute('PRAGMA foreign_keys=OFF')
+            try:
+                db.executescript('BEGIN IMMEDIATE;\n' + SCHEMA)
+                if 'note' not in {r['name'] for r in db.execute('PRAGMA table_info(pkfs)')}:
+                    db.execute("ALTER TABLE pkfs ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+                if 'packing_entered_at' not in {r['name'] for r in db.execute('PRAGMA table_info(servers)')}:
+                    create_sql = SCHEMA[SCHEMA.index('CREATE TABLE IF NOT EXISTS servers('):SCHEMA.index('CREATE UNIQUE INDEX')]
+                    db.execute(create_sql.replace('IF NOT EXISTS servers(', 'servers_upgrade('))
+                    columns = ','.join(r['name'] for r in db.execute('PRAGMA table_info(servers)'))
+                    db.execute(f'INSERT INTO servers_upgrade({columns}) SELECT {columns} FROM servers')
+                    db.execute('DROP TABLE servers')
+                    db.execute('ALTER TABLE servers_upgrade RENAME TO servers')
+                    db.execute("CREATE UNIQUE INDEX business_key ON servers(pkf,sn) WHERE lifecycle!='Deleted'")
+                db.execute('CREATE TABLE IF NOT EXISTS active_order(pkf TEXT PRIMARY KEY REFERENCES pkfs(pkf), rank INTEGER NOT NULL UNIQUE)')
+                db.execute('CREATE TABLE IF NOT EXISTS order_meta(id INTEGER PRIMARY KEY CHECK(id=1), version INTEGER NOT NULL)')
+                if not db.execute('SELECT 1 FROM order_meta').fetchone():
+                    db.execute('INSERT INTO order_meta VALUES(1,0)')
+                    initial = db.execute("SELECT pkf FROM pkfs WHERE EXISTS(SELECT 1 FROM servers WHERE servers.pkf=pkfs.pkf AND lifecycle='Active') ORDER BY CASE position WHEN 'Pinned' THEN 0 WHEN 'Normal' THEN 1 ELSE 2 END,pkf").fetchall()
+                    db.executemany('INSERT INTO active_order VALUES(?,?)', [(r[0], i) for i,r in enumerate(initial)])
+                if db.execute('PRAGMA foreign_key_check').fetchall():
+                    raise RuntimeError('Migration foreign key check failed')
+                db.execute('PRAGMA user_version=3')
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.execute('PRAGMA foreign_keys=ON')
 
     def open(self):
         db = sqlite3.connect(self.path, timeout=15)
@@ -109,9 +133,24 @@ class Store:
             db.execute('BEGIN')
             rows = [self.record(db, r[0]) for r in db.execute("SELECT id FROM servers WHERE lifecycle!='Deleted'")]
             groups = [dict(r) for r in db.execute('SELECT * FROM pkfs')]
+            order = self.order_state(db)
             rev = db.execute('SELECT COALESCE(MAX(seq),0) FROM audit').fetchone()[0]
             db.commit()
-        return dict(servers=rows, pkfs=groups, revision=rev, timezone=self.settings.timezone, models=MODELS, systems=SYSTEMS, stages=STAGES, pkf_default_prefix=self.settings.pkf_default_prefix, validation_reminders=self.settings.validation_reminders)
+        return dict(active_order=order['pkfs'], order_version=order['version'], servers=rows, pkfs=groups, revision=rev, timezone=self.settings.timezone, models=MODELS, systems=SYSTEMS, stages=STAGES, pkf_default_prefix=self.settings.pkf_default_prefix, validation_reminders=self.settings.validation_reminders)
+
+    @staticmethod
+    def order_state(db):
+        return dict(pkfs=[r[0] for r in db.execute('SELECT pkf FROM active_order ORDER BY rank')],
+                    version=db.execute('SELECT version FROM order_meta WHERE id=1').fetchone()[0])
+
+    def sync_order(self, db):
+        old = self.order_state(db)['pkfs']
+        active = {r[0] for r in db.execute("SELECT DISTINCT pkf FROM servers WHERE lifecycle='Active'")}
+        new = [p for p in old if p in active] + sorted(active-set(old))
+        if new != old:
+            db.execute('DELETE FROM active_order')
+            db.executemany('INSERT INTO active_order VALUES(?,?)', [(p,i) for i,p in enumerate(new)])
+            db.execute('UPDATE order_meta SET version=version+1 WHERE id=1')
 
     def mutate(self, action, sid, body, client_id='', request_id=''):
         operation = body['operation_id']
@@ -125,7 +164,22 @@ class Store:
                     raise Problem('operation_reused', '操作 ID 已用于其他请求', 409)
                 return json.loads(prev['response'])
             before, after, event, stamp = None, None, False, now()
-            if action == 'create':
+            if action == 'sort':
+                before = self.order_state(db)
+                order = body.get('pkfs')
+                if body.get('base_version') != before['version']:
+                    raise Problem('order_conflict', '列表已发生变化，请 Reload 最新顺序', 409)
+                if not isinstance(order,list) or any(not isinstance(p,str) for p in order) or len(order)!=len(set(order)) or set(order)!=set(before['pkfs']):
+                    raise Problem('order_conflict', '列表已发生变化，请 Reload 最新顺序', 409)
+                event = order != before['pkfs']
+                if event:
+                    db.execute('DELETE FROM active_order')
+                    db.executemany('INSERT INTO active_order VALUES(?,?)', [(p,i) for i,p in enumerate(order)])
+                    db.execute('UPDATE order_meta SET version=version+1 WHERE id=1')
+                after = self.order_state(db)
+            elif action == 'position':
+                raise Problem('retired_operation', '请刷新页面并使用 Sort PKFs', 409)
+            elif action == 'create':
                 pkf = normalize_pkf(body.get('pkf', ''))
                 if pkf != body.get('pkf'):
                     raise Problem('invalid_pkf', '创建 Server 必须使用标准 PKF')
@@ -135,18 +189,12 @@ class Store:
                 sid = str(uuid.uuid4())
                 db.execute('INSERT INTO servers(id,pkf,sn,created_at,updated_at) VALUES(?,?,?,?,?)', (sid,pkf,sn,stamp,stamp))
                 after, event = self.record(db, sid), True
-            elif action in ('position', 'pkf_note'):
-                if action == 'position':
-                    value = body.get('position')
-                    if value not in ('Pinned','Normal','Bottom'):
-                        raise Problem('invalid_position', '无效排序组')
-                    field = 'position'
-                else:
-                    value = body.get('text')
-                    if not isinstance(value, str) or '\n' in value or '\r' in value:
-                        raise Problem('invalid_note', 'PKF 备注必须为单行文本')
-                    value = value.strip()
-                    field = 'note'
+            elif action == 'pkf_note':
+                value = body.get('text')
+                if not isinstance(value, str) or '\n' in value or '\r' in value:
+                    raise Problem('invalid_note', 'PKF 备注必须为单行文本')
+                value = value.strip()
+                field = 'note'
                 before = db.execute('SELECT * FROM pkfs WHERE pkf=?', (sid,)).fetchone()
                 if not before or not db.execute("SELECT 1 FROM servers WHERE pkf=? AND lifecycle='Active'", (sid,)).fetchone():
                     raise Problem('not_found', 'Active PKF 不存在', 404)
@@ -158,9 +206,9 @@ class Store:
                 before = self.record(db, sid)
                 if before['lifecycle'] == 'Deleted':
                     raise Problem('deleted', 'Server 已删除，无法继续编辑', 410)
-                required = 'History' if action == 'return' else 'Active'
-                if before['lifecycle'] != required:
-                    raise Problem('completed' if required=='Active' else 'already_active', 'Server 已完成' if required=='Active' else 'Server 已在 Active', 409)
+                allowed = ('History','Packing') if action=='return' else ('Active','Packing') if action=='status' else ('Packing',) if action=='packing' else ('Active',)
+                if before['lifecycle'] not in allowed:
+                    raise Problem('completed', 'Server 阶段已变化，请刷新后重试', 409)
                 if body.get('generation') != before['generation']:
                     raise Problem('stale_lifecycle', 'Server 生命周期已变化，请刷新后重试', 409)
                 if action == 'edit':
@@ -191,14 +239,18 @@ class Store:
                         raise Problem('invalid_progress', '无效阶段或状态')
                     if stage==4:
                         self.confirm(body)
-                        db.execute("UPDATE servers SET stage=4,progress_state='Success',lifecycle='History',generation=generation+1,completed_at=?,updated_at=? WHERE id=?", (stamp,stamp,sid))
+                        db.execute("UPDATE servers SET stage=4,progress_state='Success',lifecycle='Packing',generation=generation+1,packing_entered_at=?,updated_at=? WHERE id=?", (stamp,stamp,sid))
                         event = True
                     elif stage != before['stage'] or state != before['progress_state']:
                         db.execute('UPDATE servers SET stage=?,progress_state=?,updated_at=? WHERE id=?', (stage,state,stamp,sid))
                         event = True
+                elif action == 'packing':
+                    self.confirm(body)
+                    db.execute("UPDATE servers SET lifecycle='History',generation=generation+1,completed_at=?,updated_at=? WHERE id=?", (stamp,stamp,sid))
+                    event = True
                 elif action == 'return':
                     self.confirm(body)
-                    db.execute("UPDATE servers SET lifecycle='Active',generation=generation+1,stage=-1,progress_state='',completed_at=NULL,updated_at=? WHERE id=?", (stamp,sid))
+                    db.execute("UPDATE servers SET lifecycle='Active',generation=generation+1,stage=-1,progress_state='',completed_at=NULL,packing_entered_at=NULL,updated_at=? WHERE id=?", (stamp,sid))
                     event = True
                 elif action == 'delete':
                     self.confirm(body)
@@ -207,10 +259,11 @@ class Store:
                 else:
                     raise Problem('invalid_action', '未知操作')
                 after = self.record(db, sid)
+            self.sync_order(db)
             if event:
                 event_id = str(uuid.uuid4())
                 cur = db.execute('INSERT INTO audit(event_id,server_id,object,action,time,before_json,after_json,client_id,request_id,operation_id) VALUES(?,?,?,?,?,?,?,?,?,?)',
-                    (event_id,sid if action not in ('position','pkf_note') else None,sid,action,stamp,packed(before),packed(after),client_id,request_id,operation))
+                    (event_id,sid if action not in ('position','pkf_note','sort') else None,sid,action,stamp,packed(before),packed(after),client_id,request_id,operation))
                 db.execute('INSERT INTO outbox(seq) VALUES(?)', (cur.lastrowid,))
                 if action=='delete':
                     snapshot = dict(before)
@@ -245,7 +298,7 @@ class Store:
     def unique(self, db, pkf, sn, exclude=''):
         duplicate = db.execute("SELECT id,lifecycle FROM servers WHERE pkf=? AND sn=? AND lifecycle!='Deleted' AND id!=?", (pkf,sn,exclude)).fetchone()
         if duplicate:
-            raise Problem('duplicate_history' if duplicate['lifecycle']=='History' else 'duplicate_active', '相同 PKF + SN 已存在', 409, self.record(db, duplicate['id']))
+            raise Problem('duplicate_history' if duplicate['lifecycle']=='History' else 'duplicate_packing' if duplicate['lifecycle']=='Packing' else 'duplicate_active', '相同 PKF + SN 已存在', 409, self.record(db, duplicate['id']))
 
     def flush_logs(self):
         """Outbox replay is safe after an append/ack crash; repair incomplete final lines."""

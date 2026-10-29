@@ -35,17 +35,18 @@ def test_real_process_restart(tmp_path):
     proc=start()
     try:
         a=call('/api/servers',dict(pkf='PKF26GR00467',sn='PERSIST'))['record']
-        call('/api/pkfs/PKF26GR00467/position',dict(position='Pinned'))
+        call('/api/pkfs/order',dict(pkfs=[a['pkf']],base_version=1))
         call(f"/api/servers/{a['id']}/status",dict(generation=0,text='Persistent history'))
-        h=call(f"/api/servers/{a['id']}/progress",dict(generation=0,stage=4,state='Success',confirmed=True))['record']
+        p=call(f"/api/servers/{a['id']}/progress",dict(generation=0,stage=4,state='Success',confirmed=True))['record']
+        h=call(f"/api/servers/{a['id']}/packing",dict(generation=1,confirmed=True))['record']
     finally:stop(proc)
     proc=start()
     try:
         state=call('/api/state');row=state['servers'][0]
         assert row['id']==a['id'] and row['lifecycle']=='History' and row['completed_at']==h['completed_at']
         assert row['status_history'][0]['text']=='Persistent history'
-        assert state['pkfs'][0]['position']=='Pinned'
-        row=call(f"/api/servers/{a['id']}/return",dict(generation=1,confirmed=True))['record']
-        assert row['stage']==-1 and row['generation']==2
+        assert state['active_order']==[]
+        row=call(f"/api/servers/{a['id']}/return",dict(generation=2,confirmed=True))['record']
+        assert row['stage']==-1 and row['generation']==3
     finally:stop(proc)
     assert list((tmp_path/'Logs'/'Timeline').glob('*.log'))

@@ -49,3 +49,7 @@ Confirm Validation 保留原确认文案，其后按配置显示通用与 Model�
 ## PKF 同行备注 — Confirmed
 
 用户要求备注紧邻 PKF 单号右侧、保持同一 Header 行，不在表格下方或标题下方新增行。输入框使用剩余横向空间；空闲边框低干扰，悬停/聚焦显示现有 input 表面与边框。状态提示（保存中/未保存/失败）同行显示，不增加高度。History 输入只读；窄屏缩减间距并隐藏非关键计数，保留单号与备注同一行。
+
+## 1.1.0 工作区与排序 — Confirmed
+
+取消旧三区标签、紫/灰分类边条、置顶沉底按钮，统一现有蓝色分组卡片。页面主操作纵向排列 Add PKF 与次要 Sort PKFs，右边缘一致。Sorting Modal沿用560px宽版，说明原文 Drag to reorder PKFs. Changes are applied after saving.；列表内部最大45vh滚动，编号完整、备注自然换行，拖拽柄32px，只有手柄触发，拖动使用hover底色、accent边框及现有轻阴影。键盘Space提起/放下、上下箭头移动、Escape取消当前拖动，再次Escape关闭Modal；只读文本可选择。Packing使用Package图标，Status复用原组件，Packing Success绿色前景与成功图标，确认后迁移；手动Light/Dark不变。

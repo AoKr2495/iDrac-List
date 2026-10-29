@@ -118,3 +118,9 @@ Logo 仍执行用户更具体的“只用图标、不要 SVG 文字”指令，�
 ## 1.0.1 HTTP + PKF 备注合并发布
 
 用户要求两项一起 push GitHub 并交付完整离线 ZIP/部署手册。本地 44 后端、11 浏览器测试、类型检查和构建通过；HTTP 非安全 IP 回归通过，统一 getRandomValues UUID。完整修改与数据兼容说明见 deployment/TEST_REPORT_1.0.1.md、deployment/UPDATE_1.0.1.md。此前“备注仅本地未发布”的文字为历史阶段状态，由本次合并发布更新取代。
+
+## 1.1.0 需求变更核对
+
+本次用户明确覆盖旧三区排序与Validation直接入History规则；其余唯一性、Status、身份、审计、备注、HTTP兼容与离线部署保持。三项边界全部Confirmed：Packing按进入时间倒序、最终完成时间在Packing Success；Packing冲突提供查看/取消/返工且备注只读；临时空分组不进入正式排序。
+
+升级实现及风险见deployment/UPGRADE_PACKING_DESIGN.md，NAS升级/备份/回退见deployment/UPDATE_1.1.0.md；最终验证以deployment/TEST_REPORT_1.1.0.md为准，未执行NAS升级。

@@ -43,7 +43,7 @@ def test_reminders_are_configuration_not_a_validation_gate(tmp_path):
         row=client.post('/api/servers',json={'operation_id':str(uuid.uuid4()),'pkf':'PKF26GR00468','sn':'NO-MODEL'}).json()['record']
         # Empty Model/OS and unacknowledged reminder still permit confirmed Validation.
         result=client.post(f"/api/servers/{row['id']}/progress",json={'operation_id':str(uuid.uuid4()),'generation':0,'stage':4,'state':'Success','confirmed':True})
-        assert result.json()['record']['lifecycle']=='History'
+        assert result.json()['record']['lifecycle']=='Packing'
 
 
 @pytest.mark.parametrize('content',[

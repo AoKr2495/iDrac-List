@@ -25,3 +25,11 @@
 - [ ] 容器重启后数据、历史、排序恢复；确认备份覆盖配置/Data/Logs。
 - [ ] 记录镜像标签/提交/校验值/路径/UID/GID/验收日期。
 - [ ] 保留旧版本镜像和备份，避免升级时覆盖现有 Data/Logs/config。
+
+## 1.1.0 额外检查
+
+- [ ] 已阅读UPDATE_1.1.0.md，停机备份完整Data/Logs/配置，保留旧镜像。
+- [ ] 旧库迁移Schema3、原History/备注/Status/审计保留，旧Active顺序正确初始化。
+- [ ] 排序弹窗Save/Cancel/过期版本Reload、多用户同步、刷新/重启保留。
+- [ ] Validation进入Packing，Packing Status可保存，Packing Success进入History，两处返工正常。
+- [ ] 理解旧镜像不能直接读Schema3，回退需要升级前数据库备份。

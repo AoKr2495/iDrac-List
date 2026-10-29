@@ -65,7 +65,7 @@ def test_version_one_database_migrates_without_losing_business_or_audit(store):
     after=upgraded.snapshot()
     assert after['servers']==before['servers'] and after['revision']==before['revision']
     assert after['pkfs'][0]==dict(before['pkfs'][0],note='')
-    with upgraded.connect() as db:assert db.execute('PRAGMA user_version').fetchone()[0]==2
+    with upgraded.connect() as db:assert db.execute('PRAGMA user_version').fetchone()[0]==3
     # Re-running startup never overwrites an already stored note.
     note(upgraded,row['pkf'],'Survives restart')
     assert Store(store.settings).snapshot()['pkfs'][0]['note']=='Survives restart'

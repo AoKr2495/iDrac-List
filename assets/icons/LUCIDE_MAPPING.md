@@ -34,3 +34,7 @@ Lucide 为统一功能图标库；统一 Icon Registry 支持全局尺寸、线�
 
 使用语义键集中映射组件；尺寸为表格 16、行菜单 18、导航 20、提示 24 px，默认描边 1.75 px、强调 2 px，颜色由语义 token 传入，不逐页硬编码。图标不单独决定业务状态或创造入口。仅图标按钮提供可访问名称；Status History 列按已确认规则只显示 `···`，不可擅自换成时钟。
 统一 Registry 已实现在 frontend/src/icons.tsx；图标选择、尺寸与线宽按授权定稿，已通过构建检查。
+
+## 1.1.0 映射更新
+
+navigation.packing → Package；action.sort → ListOrdered；action.drag → GripVertical。旧pkf.pin/pkf.unpin/pkf.bottom已从Registry与UI移除，不再提供置顶/沉底入口。
